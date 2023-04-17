@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base href="/" />
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=5.0">
+  <link href="https://juncture-digital.github.io/web-app/static/images/favicon.svg" rel="icon" type="image/svg+xml" />
+  <link href="https://juncture-digital.github.io/web-app/static/images/favicon.ico" rel="icon" type="image/png" />
+  <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/juncture-digital/docs/css/index.css" rel="stylesheet">
+</head>
+<body style="opacity:0;">
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-DRHNQSMN5Y" type="text/javascript"></script>
+  <script src="https://cdn.jsdelivr.net/npm/juncture-digital/docs/js/index.js" type="module"></script>
+  <script>
+    const PREFIX = null
+    const REF = null
+
+    const junctureDomains = new Set(['juncture-digital.org', 'www.juncture-digital.org', 'beta.juncture-digital.org', 'dev.juncture-digital.org', 'editor.juncture-digital.org', 'localhost:8080'])
+    const isJuncture = junctureDomains.has(location.host)
+
+    console.log(`PREFIX=${PREFIX} REF=${REF} host=${location.host} isJuncture=${isJuncture}`)
+
+    // Remove ref query argument from browser URL if same as REF
+    if (!isJuncture) {
+      let re = new RegExp(`^\/${PREFIX}`)
+      let browserPath = `${location.origin}${location.pathname.replace(re,'')}`
+      let qargsRef = (new URL(document.location)).searchParams.get('ref')
+      if (qargsRef && qargsRef !== REF) browserPath += `?ref=${qargsRef}`
+      window.history.replaceState({}, document.title, browserPath)
+    }
+
+    // Google Analytics
+    window.dataLayer = window.dataLayer || []
+    function gtag(){dataLayer.push(arguments)}
+    gtag('js', new Date())
+    gtag('config', 'G-DRHNQSMN5Y')
+
+  </script>
+</body>
+</html>
