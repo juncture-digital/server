@@ -353,7 +353,6 @@ def parse_md(md, base_url, acct, repo, ref, ghp):
       'fenced_code',
       'mdx_breakless_lists',
       'sane_lists'
-      # 'mdx_urlize'
     ],
     extension_configs = {
       'customblocks': {
@@ -419,7 +418,6 @@ def j1_md_to_html(src, **args):
   repo = args.pop('repo', None)
   ref = args.pop('ref', 'main')
   path = args.pop('path', None)
-  # prefix = args.pop('prefix', f'{acct}/{repo}')
   prefix = ''
   
   logger.info(f'j1_md_to_html: base_url={base_url}, ghp={ghp}, acct={acct}, repo={repo}, ref={ref}, path={path}, prefix={prefix}')
@@ -457,7 +455,6 @@ def j1_md_to_html(src, **args):
 
   html = template.prettify()
   html = re.sub(r'\s+<p>\s+<\/p>', '', html) # removes empty paragraphs
-  logger.info(html)
   return html
 
 
@@ -470,85 +467,14 @@ def j2_md_to_html(src, **args):
   repo = args.pop('repo', None)
   ref = args.pop('ref', 'main')
   path = args.pop('path', None)
-  # prefix = args.pop('prefix', f'{acct}/{repo}')
   prefix = ''
   
   logger.info(f'j2_md_to_html: base_url={base_url}, ghp={ghp}, acct={acct}, repo={repo}, ref={ref}, path={path}, prefix={prefix}')
 
-  def replace_empty_headings(match):
-    return re.sub(r'(#+)(.*)', r'\1 &nbsp;\2', match.group(0))
-  
-  md = re.sub(r'^#{1,6}(\s+)(\{.*\}\s*)?$', replace_empty_headings, src, flags=re.M)
-    
-  html = markdown.markdown(
-    md,
-    extensions=[
-      'customblocks',
-      'extra',
-      'pymdownx.mark',
-      'mdx_outline',
-      'codehilite',
-      'prependnewline',
-      'fenced_code',
-      'mdx_breakless_lists',
-      'sane_lists'
-    ],
-    extension_configs = {
-      'customblocks': {
-        'fallback': customblocks_default,
-        'generators': {
-          'default': 'md.generators:default'
-        }
-      }
-    }
-  )
-
-  def em_repl(match):
-    return match.group(0).replace('<em>','_').replace('</em>','_')
-
-  html = re.sub(r'<h[1-6]>\s*&nbsp;\s*<\/h[1-6]>', '', html)
-  html = re.sub(r'(\bwc:\S*<\/?em>.*\b)', em_repl, html)
-  
-  soup = BeautifulSoup(html, 'html5lib')
-
-  convert_urls(soup, base_url, acct, repo, ref, ghp)
-
-  for el in soup.findAll(re.compile("^ve-.+")):
-    el.attrs = dict([(k,v if v != 'true' else None) for k,v in el.attrs.items()])
-  
-    if el.name in ('ve-image', 've-video'):
-      el.name = 've-media'
-
-  add_hypothesis = soup.find('ve-add-hypothesis') or soup.find('ve-annotate')
-  custom_style = soup.find('ve-style')
-  footer = soup.find('ve-footer')
-  first_heading = soup.find(re.compile('^h[1-6]$'))
-  
-  _config_tabs(soup)
-  _config_cards(soup)
-  _set_mark_attrs(soup)
-
- # insert a 'main' wrapper element around the essay content
-  main = soup.html.body
-  main.attrs = soup.html.body.attrs
-  main.name = 'main'
-  main.attrs['id'] = 'juncture'
-  body = soup.new_tag('body')
-  contents = main.replace_with(body)
-  body.append(contents)
-
-  footnotes = soup.find('div', class_='footnote')
-  if footnotes:
-    footnotes.name = 'section'
-    contents.append(footnotes)
-
-  if footer: main.append(footer)
-
-  set_entities(soup)
+  soup = parse_md(src, base_url, acct, repo, ref, ghp)
 
   css = ''
   meta = soup.find('ve-meta')
-  footer = soup.find('ve-footer')
 
   if prefix:
     for el in soup.find_all('ve-media'):
@@ -561,8 +487,9 @@ def j2_md_to_html(src, **args):
   if prefix: template = template.replace('const PREFIX = null', f"const PREFIX = '{prefix}';")
   if ref: template = template.replace('const REF = null', f"const REF = '{ref}';")
   template = BeautifulSoup(template, 'html5lib')
-  template.body.insert(0, contents)
-    
+  template.body.insert(0, soup.html.body.main)
+  
+  custom_style = soup.find('ve-style')
   if custom_style:
     css_href = custom_style.attrs.get('href')
     if css_href:
@@ -573,7 +500,8 @@ def j2_md_to_html(src, **args):
           css = content.markdown
 
     custom_style.decompose()
-    
+  
+  add_hypothesis = soup.find('ve-add-hypothesis') or soup.find('ve-annotate')
   if add_hypothesis:
     add_hypothesis.decompose()
     add_script(template, 'https://hypothes.is/embed.js', {'async': 'true'})
@@ -606,6 +534,7 @@ def j2_md_to_html(src, **args):
   # else:
     # add_meta(template, {'name': 'robots', 'content': 'noindex'})
   
+  first_heading = soup.find(re.compile('^h[1-6]$'))
   if not (template.head.title and template.head.title.string) and first_heading:
     title = soup.new_tag('title')
     title.string = first_heading.text
@@ -680,11 +609,6 @@ def convert(src, fmt, **args):
     else:
       return content
 
-@app.get('/docs/')
-@app.get('/docs')
-def main():
-  return RedirectResponse(url='/docs')
-
 template = '''<!doctype html>
 <html lang="en">
   <head>
@@ -702,7 +626,7 @@ async def ignore():
 
 @app.get('/manifest.json')
 def pwa_manifest():
-  return Response(status_code=200, content=open(f'{BASEDIR}/manifest.json', 'r').read(), media_type='application/json')
+  return Response(status_code=200, content=get_gh_file('juncture-digital/server/static/manifest.json'), media_type='application/json')
 
 @app.get('/{path:path}')
 async def serve(
@@ -726,7 +650,7 @@ async def serve(
     else:
       return RedirectResponse(url=f'/#/{path}')
   else:
-    return Response(status_code=200, content=open(f'{BASEDIR}/index.html', 'r').read(), media_type='text/html')
+    return Response(status_code=200, content=get_gh_file('juncture-digital/server/static/index.html'), media_type='text/html')
 
 @app.post('/html/')
 async def convert_md_to_html(request: Request):
