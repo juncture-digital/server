@@ -4,44 +4,37 @@
 '''
 Python app for Juncture site.
 Dependencies: bs4 fastapi html5lib lxml Markdown==3.3.6 mdx-breakless-lists prependnewline pymdown-extensions requests uvicorn git+https://github.com/rdsnyder/mdx_outline.git git+https://github.com/rdsnyder/markdown-customblocks.git
-
 '''
 
 import logging
-
 logging.basicConfig(format='%(asctime)s : %(filename)s : %(levelname)s : %(message)s')
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 import os
+import json
 import sys
 import re
 import argparse
+import base64
 
-SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))
-sys.path.append(SCRIPT_DIR)
-
-BASEDIR = SCRIPT_DIR
-STATICDIR = f'{BASEDIR}/static'
-logger.info(f'BASEDIR={BASEDIR} STATICDIR={STATICDIR}')
+BASEDIR = os.path.abspath(os.path.dirname(__file__))
+sys.path.append(BASEDIR)
 
 from bs4 import BeautifulSoup
 
 import markdown
 
-from generators import default
-
 from typing import Optional
 
 import uvicorn
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import Response
-
 from fastapi.middleware.cors import CORSMiddleware
-
 from starlette.responses import RedirectResponse
-app = FastAPI(title='Juncture API', root_path='/')
+
+app = FastAPI(title='Juncture', root_path='/')
 app.add_middleware(
   CORSMiddleware,
   allow_origins=['*'],
@@ -53,8 +46,99 @@ app.add_middleware(
 import requests
 logging.getLogger('requests').setLevel(logging.INFO)
 
+### Customblocks Config ###
+
+positional_defaults = {
+  've-card': ['label', 'image', 'href', 'description'],
+  've-header': ['label', 'background', 'subtitle', 'options', 'position'],
+  've-iframe': ['src'],
+  've-image': ['src', 'options', 'seq', 'fit'],
+  've-map': ['center', 'zoom', 'overlay'],
+  've-media': ['src'],
+  've-meta': ['title', 'description'],
+  've-spacer': ['height'],
+  've-plant-specimen': ['qid', 'max'],
+  've-style': ['href'],
+  've-video': ['src', 'caption'],
+}
+
+class_args = {
+  've-component': [],
+  've-entities': ['text-left', 'text-right'],
+  've-image': ['text-left', 'text-right', 'col2', 'col3'],
+  've-map': ['text-left', 'text-right'],
+  've-media': ['text-left', 'text-right', 'col2', 'col3'],
+  've-video': ['text-left', 'text-right'],
+}
+
+boolean_attrs = {
+  've-component': ['sticky',],
+  've-entities': ['full', 'left', 'right', 'sticky'],
+  've-footer': ['sticky',],
+  've-header': ['sticky',],
+  've-iframe': ['allow', 'allowfullscreen', 'full', 'left', 'right', 'sticky'],
+  've-image': ['cards', 'compare', 'curtain', 'full', 'grid', 'left', 'right', 'sticky', 'sync', 'zoom-on-scroll'],
+  've-map': ['cards', 'full', 'left', 'marker', 'prefer-geojson', 'popup-on-hover', 'right', 'sticky', 'zoom-on-scroll', 'zoom-on-click'],
+  've-media': ['autoplay', 'cards', 'compare', 'full', 'grid', 'left', 'muted', 'no-caption', 'no-info-icon', 'right', 'small', 'static', 'sticky'],
+  've-media-selector': ['full', 'left', 'right', 'sticky'],
+  've-mermaid': ['full', 'left', 'right', 'sticky'],
+  've-plant-specimen': ['full', 'left', 'right', 'sticky'],
+  've-video': ['full', 'left', 'right', 'sticky']
+}
+
+def customblocks_default(ctx, *args, **kwargs):
+  logger.debug(f'args={args} kwargs={kwargs}')
+  if len(args) > 0:
+    _classes = []
+    idx = 0
+    for arg in args:
+      if ctx.type in boolean_attrs and arg in boolean_attrs[ctx.type]:
+        kwargs[arg] = 'true'
+      elif ctx.type in class_args and arg in class_args[ctx.type]:
+        _classes.append(arg)
+      elif ctx.type in positional_defaults and idx < len(positional_defaults[ctx.type]):
+        kwargs[positional_defaults[ctx.type][idx]] = arg
+        idx += 1
+    if len(_classes) > 0:
+      kwargs['class'] = ' '.join(_classes)
+  logger.debug(f'{ctx.type} {kwargs}')
+  # kwargs = [f'{k}="{quote(v)}"' for k,v in kwargs.items()]
+  kwargs = [f'{k}="{v}"' for k,v in kwargs.items()]
+  if ctx.type == 've-iframe':
+    kwargs = [v.replace('&','&amp;') for v in kwargs]
+  
+  html = f'<{ctx.type} {" ".join(kwargs)}>{markdown.markdown(ctx.content)}</{ctx.type}>'
+  return html
+
+### End Customblocks Config ###
+
+_cache = {}
+def get_gh_file(url, ref='main'):
+  logger.info(f'get_gh_file {url}')
+  if url in _cache:
+    return _cache[url]
+  content = None
+  if 'github.io' in url:
+    resp = requests.get(url)
+    if resp.status_code == 200:
+      content = resp.text
+  else:  
+    acct, repo, *path_elems = url.split('/')
+    url = f'https://api.github.com/repos/{acct}/{repo}/contents/{"/".join(path_elems)}?ref={ref}'
+    resp = requests.get(url, headers={
+        # 'Authorization': f'Token {GH_ACCESS_TOKEN}',
+        'Accept': 'application/vnd.github.v3+json',
+        'User-agent': 'JSTOR Labs visual essays client'
+    })
+    if resp.status_code == 200:
+      resp = resp.json()
+      content = base64.b64decode(resp['content']).decode('utf-8')
+  if content:
+    _cache[url] = content
+  return content
+
 def convert_urls(soup, base, acct, repo, ref, ghp=False):
-  logger.info(f'convert_urls: base={base} acct={acct} repo={repo} ref={ref} ghp={ghp}')
+  logger.debug(f'convert_urls: base={base} acct={acct} repo={repo} ref={ref} ghp={ghp}')
   
   # remove Github badges
   for img in soup.find_all('img'):
@@ -75,10 +159,11 @@ def convert_urls(soup, base, acct, repo, ref, ghp=False):
           base = f'/{acct}/{repo}/'
         else:
           base = '/'
-      converted = base + elem.attrs['href'][1:] + (f'?ref={ref}' if ref else '')
+      converted = base + elem.attrs['href'][1:] + (f'?ref={ref}' if ref != 'main' else '')
       elem.attrs['href'] = converted
     else:
-      if ref:
+      elem.attrs['href'] = f'/{acct}/{repo}/{elem.attrs["href"]}'
+      if ref != 'main':
         elem.attrs['href'] += f'?ref={ref}'
     logger.debug(f'orig={orig} base={base} converted={elem.attrs["href"]}')
   
@@ -248,22 +333,7 @@ def set_entities(soup):
           if child.name.startswith('ve-'):
             child.attrs['entities'] = ' '.join(qids)
 
-def j1_to_j2_md(src):
-  """Convert Juncture version 1 markdown to HTML"""
-  return ''
-
-def j1_md_to_html(src, **args):
-  """Convert Juncture version 1 markdown to HTML"""
-  base_url = args.pop('base', '')
-  ghp = args.pop('ghp', False)
-  acct = args.pop('acct', None)
-  repo = args.pop('repo', None)
-  ref = args.pop('ref', 'main')
-  path = args.pop('path', None)
-  # prefix = args.pop('prefix', f'{acct}/{repo}')
-  prefix = ''
-  
-  logger.info(f'j1_md_to_html: base_url={base_url}, ghp={ghp}, acct={acct}, repo={repo}, ref={ref}, path={path}, prefix={prefix}')
+def parse_md(md):
 
   def replace_empty_headings(match):
     return re.sub(r'(#+)(.*)', r'\1 &nbsp;\2', match.group(0))
@@ -286,7 +356,7 @@ def j1_md_to_html(src, **args):
     ],
     extension_configs = {
       'customblocks': {
-        'fallback': default,
+        'fallback': customblocks_default,
         'generators': {
           'default': 'md.generators:default'
         }
@@ -336,36 +406,41 @@ def j1_md_to_html(src, **args):
   if footer: main.append(footer)
 
   set_entities(soup)
+  
+  return soup
 
-  # api_static_root_js = f'http://{host}:8000/static' if env == 'DEV' else 'https://api.juncture-digital.org/static'
+def j1_to_j2_md(src):
+  """Convert Juncture version 1 markdown to HTML"""
+  return ''
 
-  meta = soup.find('param', ve_config='')
-  template = open(f'{STATICDIR}/v1/index.html', 'r').read()
-  if prefix: template = template.replace('const PREFIX = null', f"const PREFIX = '{prefix}';")
-  if ref: template = template.replace('const REF = null', f"const REF = '{ref}';")
+def j1_md_to_html(src, **args):
+  """Convert Juncture version 1 markdown to HTML"""
+  base_url = args.pop('base', '')
+  ghp = args.pop('ghp', False)
+  acct = args.pop('acct', None)
+  repo = args.pop('repo', None)
+  ref = args.pop('ref', 'main')
+  path = args.pop('path', None)
+  # prefix = args.pop('prefix', f'{acct}/{repo}')
+  prefix = ''
+  
+  logger.info(f'j1_md_to_html: base_url={base_url}, ghp={ghp}, acct={acct}, repo={repo}, ref={ref}, path={path}, prefix={prefix}')
+
+  soup = parse_md(src)
+  first_heading = soup.find(re.compile('^h[1-6]$'))
+  
+  template = get_gh_file('juncture-digital/server/static/v2.html')
+  if prefix: template = template.replace('window.PREFIX = null', f"window.PREFIX = '{prefix}';")
+  if ref: template = template.replace('window.REF = null', f"window.REF = '{ref}';")
   template = BeautifulSoup(template, 'html5lib')
+  
+  logger.info(soup)
   for el in template.find_all('component'):
     if 'v-bind:is' in el.attrs and el.attrs['v-bind:is'] == 'mainComponent':
       el.append(contents)
       break
-  
-  '''
-  css = open(f'{STATICDIR}/v1/css/main.css', 'r').read()
-  base = template.find('base')
-  if base:
-    base.attrs['href'] = base_url
-  
-  style = soup.new_tag('style')
-  style.attrs['data-id'] = 'default'
-  style.string = css
-  template.body.insert(0, style)
 
-  script = soup.new_tag('script')
-  script.attrs['type'] = 'module'
-  script.string = open(f'{STATICDIR}/v1/js/main.js', 'r').read()
-  template.body.append(script)
-  '''
-
+  meta = soup.find('param', ve_config='')
   if meta:
     for name in meta.attrs:
       if name == 'title':
@@ -382,10 +457,10 @@ def j1_md_to_html(src, **args):
     title.string = first_heading.text
     template.head.append(title)
 
-  # html = str(template)
   html = template.prettify()
   html = re.sub(r'\s+<p>\s+<\/p>', '', html) # removes empty paragraphs
   return html
+
 
 def j2_md_to_html(src, **args):
   """Convert Juncture version 2 markdown to HTML"""
@@ -421,7 +496,7 @@ def j2_md_to_html(src, **args):
     ],
     extension_configs = {
       'customblocks': {
-        'fallback': default,
+        'fallback': customblocks_default,
         'generators': {
           'default': 'md.generators:default'
         }
@@ -473,7 +548,6 @@ def j2_md_to_html(src, **args):
   set_entities(soup)
 
   css = ''
-  # api_static_root_js = f'http://{host}:8000/static' if env == 'DEV' else 'https://api.juncture-digital.org/static'
   meta = soup.find('ve-meta')
   footer = soup.find('ve-footer')
 
@@ -484,9 +558,9 @@ def j2_md_to_html(src, **args):
       if prefix:
         el.attrs['essay-base'] = f'{prefix}/{ref}/' + (f'{path}' if path != '/' else '')
   
-  template = open(f'{STATICDIR}/v2/index.html', 'r').read()
-  if prefix: template = template.replace('window.PREFIX = null', f"window.PREFIX = '{prefix}';")
-  if ref: template = template.replace('window.REF = null', f"window.REF = '{ref}';")
+  template = get_gh_file('juncture-digital/server/static/v2.html')
+  if prefix: template = template.replace('const PREFIX = null', f"const PREFIX = '{prefix}';")
+  if ref: template = template.replace('const REF = null', f"const REF = '{ref}';")
   template = BeautifulSoup(template, 'html5lib')
   template.body.insert(0, contents)
     
@@ -520,13 +594,6 @@ def j2_md_to_html(src, **args):
     # template.head.append(style)
     template.body.insert(0, style)
 
-  '''
-  script = soup.new_tag('script')
-  script.attrs['type'] = 'module'
-  script.string = open(f'{STATICDIR}/v2/js/main.js', 'r').read()
-  template.body.append(script)
-  '''
-
   if meta:
     for name in meta.attrs:
       if name == 'title':
@@ -558,7 +625,7 @@ def html_to_wp(src):
 def detect_format(src):
   """Detect format of source file"""
   params = re.findall(r'<param', src)
-  return 'j1_md' if params else 'j2_md'
+  return 'md_j1' if params else 'md_j2'
 
 def read(src):
   """Read source file"""
@@ -568,44 +635,52 @@ def read(src):
     if (resp.status_code == 404):
       url = src + '/README.md'
       resp = requests.get(url)
+      if resp.status_code == 404: return None
     return resp.text
   else:
     with open(src, 'r') as f:
       return f.read()
 
-def convert(**args):
+def convert(src, fmt, **args):
   """Convert source file to specified format"""
-  src = args.pop('src')
   if src.startswith('https://raw.githubusercontent.com'):
     path_elems = src.split('/')[3:]
     acct, repo, ref, *path_elems = path_elems
     path = '/' + '/'.join(path_elems)
     args = {**args, 'acct': acct, 'repo': repo, 'ref': ref, 'path': path}
 
-  fmt = args.pop('fmt')
-  contents = read(src)
-  in_fmt = detect_format(contents)
+  content = read(src)
+  if not content: return None
 
-  if in_fmt == 'j1_md':
-    if fmt == 'j2_md':
-      return j1_to_j2_md(contents)
-    elif fmt == 'html':
-      return j1_md_to_html(contents, **args)
-    elif fmt == 'wp':
-      return html_to_wp(j1_md_to_html(contents))
-  elif in_fmt == 'j2_md':
-    if fmt == 'html':
-      return j2_md_to_html(contents, **args)
-    elif fmt == 'wp':
-      return html_to_wp(j2_md_to_html(contents))
+  in_fmt = detect_format(content)
+
+  out_fmt = fmt
+  if out_fmt in ('html', 'md', 'wp'):
+    out_fmt += f'_j{in_fmt[-1]}'
+  
+  logger.info(f'Converting {src} from {in_fmt} to {out_fmt}')
+
+  if in_fmt == 'md_j1':
+    if out_fmt.endswith('_j2'):
+      content = j1_to_j2_md(content)
+    if out_fmt.startswith('md'):
+      return content
+    html = j1_md_to_html(content, **args) if out_fmt.endswith('_j1') else j2_md_to_html(content, **args)
+    if out_fmt.startswith('html'):
+      return html
+    else: # wp
+      return html_to_wp(html, **args)
+  
+  elif in_fmt == 'md_j2':
+    if out_fmt.startswith('html'):
+      return j2_md_to_html(content, **args)
+    elif out_fmt.startswith('wp'):
+      return html_to_wp(j2_md_to_html(content, **args))
     else:
-      return contents
-  elif in_fmt == 'html':
-    if fmt == 'wp':
-      return html_to_wp(contents)
+      return content
 
 @app.get('/docs/')
-@app.get('/')
+@app.get('/docs')
 def main():
   return RedirectResponse(url='/docs')
 
@@ -624,29 +699,39 @@ template = '''<!doctype html>
 async def ignore():
   return Response(status_code=404)
 
-@app.get('/{path:path}/')
+@app.get('/manifest.json')
+def pwa_manifest():
+  return Response(status_code=200, content=open(f'{BASEDIR}/manifest.json', 'r').read(), media_type='application/json')
+
 @app.get('/{path:path}')
-@app.get('/')
 async def serve(
     path: Optional[str] = None,
     ref: Optional[str] = 'main',
     fmt: Optional[str] = 'html'
   ):
-  logger.info(f'path={path}')
-  logger.info(path.split('/'))
-  acct, repo, *path_elems = path.split('/') if path else ('juncture-digital', 'juncture', '')
-  gh_path = '/'.join(path_elems)
-  # gh_path += 'README.md' if gh_path.endswith('/') else '/README.md'
-  src = f'https://raw.githubusercontent.com/{acct}/{repo}/{ref}/{gh_path}'
-  
-  resp = convert(src=src, fmt=fmt)
-
-  if fmt == 'html':
-    # return resp, 200
-    return Response(status_code=200, content=resp, media_type='text/html')
+  logger.info(f'path: {path}, ref: {ref}, fmt: {fmt}')
+  if path:
+    try:
+      acct, repo, *path_elems = path.split('/') if path else ('juncture-digital', 'juncture', '')
+      gh_path = '/'.join(path_elems)
+      src = f'https://raw.githubusercontent.com/{acct}/{repo}/{ref}/{gh_path}'
+      resp = convert(src=src, fmt=fmt)
+    except:
+      resp = None
+    if resp:
+      media_type = 'text/html' if fmt.startswith('html') else 'text/markdown' if fmt.startswith('md') else 'text/html' # ?? what mime type for wp?
+      return Response(status_code=200, content=resp, media_type=media_type)
+    else:
+      return RedirectResponse(url=f'/#/{path}')
   else:
-    return template % f'{acct}/{repo}/{gh_path}', 200
-    # return Response(resp, mimetype='text/markdown')
+    return Response(status_code=200, content=open(f'{BASEDIR}/index.html', 'r').read(), media_type='text/html')
+
+@app.post('/html/')
+async def convert_md_to_html(request: Request):
+  payload = await request.body()
+  payload = json.loads(payload)
+  html = j2_md_to_html(payload['markdown'])
+  return Response(status_code=200, content=html, media_type='text/html')
 
 if __name__ == '__main__':
   logger.setLevel(logging.INFO)

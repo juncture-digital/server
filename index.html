@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Juncture</title>
+  <link href="https://juncture-digital.github.io/juncture/static/images/favicon.svg" rel="icon" type="image/svg+xml"/>
+  <link href="https://juncture-digital.github.io/juncture/images/favicon.png" rel="icon" type="image/png"/>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+  <meta name="description" content="Juncture is a free to use suite of tools and services that enable anyone to easily create engaging web pages with rich visualizations, including interactive images, videos, maps, and more.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify@4/themes/pure.css" />
+  <link rel="stylesheet" href="http://juncture-digital.github.io/juncture/static/css/custom.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/juncture-digital/docs/css/index.css">
+  <link rel="manifest" href="http://juncture-digital.github.io/juncture/manifest.json">
+</head>
+<body>
+
+  <div id="app"></div>
+  <script>
+    let basePath = location.hostname === 'localhosts'
+      ? '/docs/'
+      : `https://raw.githubusercontent.com/juncture-digital/juncture/${location.hostname === 'dev.juncture-digital.org' ? 'dev' : 'main'}/docs/`
+    window.$docsify = {
+      alias: { '.*/_sidebar.md': '/_sidebar.md' },
+      autoHeader: false,
+      auto2top: true,
+      basePath,
+      // coverpage: true,
+      homepage: 'README.md',
+      loadNavbar: false,
+      loadSidebar: true,
+      logo: 'https://juncture-digital.github.io/juncture/static/images/favicon.svg',
+      name: 'Juncture',
+      // repo: 'https://github.com/juncture-digital/juncture',
+      routerMode: 'history', // hash or history
+      // themeColor: '#5B152E',
+    }
+  </script>
+  <!-- Docsify v4 -->
+  <script src="//cdn.jsdelivr.net/npm/docsify@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-markdown.min.js"></script>
+  <!-- <script src="https://cdn.jsdelivr.net/npm/juncture-digital/docs/js/index.js" type="module"></script> -->
+  <script src="http://localhost:5173/src/main.ts" type="module"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-DRHNQSMN5Y" type="text/javascript"></script>
+  <script>
+
+    const referrerUrl = document.referrer
+    if (referrerUrl) {
+      const referrer = new URL(referrerUrl)
+      if (referrer.host === 'github.com' && referrer.pathname.indexOf('/jstor-labs/juncture/wiki') < 0 && referrer.pathname.indexOf('/juncture-digital/juncture/issues') < 0) {
+        const referrerPath = referrer.pathname.slice(1).split('/').filter(pe => pe)
+        if (referrerPath.length > 0) {
+          const ghAcct = referrerPath[0]
+          const ghRepo = referrerPath[1]
+          const ghBranch = referrerPath.length > 3 ? referrerPath[3] : 'main'
+          const pathStart = 4
+          const pathEnd = referrerPath[referrerPath.length-1] === 'README.md' || referrerPath[referrerPath.length-1] === 'index.md' ? referrerPath.length-1 : referrerPath.length
+          const ghPath = referrerPath.slice(pathStart, pathEnd).join('/').replace(/\.md$/, '')
+          const redirect = `${window.location.origin}/${ghAcct}/${ghRepo}/${ghPath}${ghBranch === 'master' || ghBranch === 'main' ? '' : '?ref=' + ghBranch}`
+          console.log(`referrerUrl=${referrerUrl} redirect=${redirect}`)
+          window.location = redirect
+        }
+      }
+    }
+
+    // Google Analytics
+    if (location.hostname !== 'localhost' && location.hostname !== 'dev.juncture-digital.org') {
+      window.dataLayer = window.dataLayer || []
+      function gtag(){dataLayer.push(arguments)}
+      gtag('js', new Date())
+      gtag('config', 'G-DRHNQSMN5Y')
+    }
+
+    if (location.hostname === 'dev.juncture-digital.org') {
+      let metaRobots = document.createElement('meta')
+      metaRobots.name = 'robots'
+      metaRobots.content = 'noindex'
+      let metaTags = document.getElementsByTagName('meta')
+      metaTags[metaTags.length-1].insertAdjacentElement("afterend", metaRobots)
+    }
+
+    function toggleSidebar() { document.body.classList.toggle('close') }
+
+    const isMobile = window.innerWidth < 768
+    if (!isMobile && (!location.hash || location.hash === '#/')) toggleSidebar()
+
+    window.addEventListener('popstate', (evt) => {
+      if (location.hash !== '#/') document.body.classList.remove('close')
+    }) // The URL changed...
+
+    if (typeof navigator.serviceWorker !== 'undefined') {
+      // navigator.serviceWorker.register('sw.js')
+    }
+  
+  </script>
+</body>
+</html>
