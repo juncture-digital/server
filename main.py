@@ -3,7 +3,7 @@
 
 '''
 Python app for Juncture site.
-Dependencies: bs4 fastapi html5lib lxml Markdown==3.3.6 mdx-breakless-lists prependnewline pymdown-extensions requests uvicorn git+https://github.com/rdsnyder/mdx_outline.git git+https://github.com/rdsnyder/markdown-customblocks.git
+Dependencies: bs4 expiringdict fastapi html5lib lxml Markdown==3.3.6 mdx-breakless-lists prependnewline pymdown-extensions requests uvicorn git+https://github.com/rdsnyder/mdx_outline.git git+https://github.com/rdsnyder/markdown-customblocks.git
 '''
 
 import logging
@@ -22,8 +22,8 @@ BASEDIR = os.path.abspath(os.path.dirname(__file__))
 sys.path.append(BASEDIR)
 
 from bs4 import BeautifulSoup
-
 import markdown
+from expiringdict import ExpiringDict
 
 from typing import Optional
 
@@ -112,7 +112,7 @@ def customblocks_default(ctx, *args, **kwargs):
 
 ### End Customblocks Config ###
 
-_cache = {}
+_cache = ExpiringDict(max_len=1000, max_age_seconds=24 * 60 * 60)
 def get_gh_file(url, ref='main'):
   logger.info(f'get_gh_file {url}')
   if url in _cache:
@@ -333,12 +333,13 @@ def set_entities(soup):
           if child.name.startswith('ve-'):
             child.attrs['entities'] = ' '.join(qids)
 
-def parse_md(md):
+def parse_md(md, base_url, acct, repo, ref, ghp):
+  logger.info(f'Parsing {base_url}/{acct}/{repo}/{ref}')
 
   def replace_empty_headings(match):
     return re.sub(r'(#+)(.*)', r'\1 &nbsp;\2', match.group(0))
   
-  md = re.sub(r'^#{1,6}(\s+)(\{.*\}\s*)?$', replace_empty_headings, src, flags=re.M)
+  md = re.sub(r'^#{1,6}(\s+)(\{.*\}\s*)?$', replace_empty_headings, md, flags=re.M)
     
   html = markdown.markdown(
     md,
@@ -380,10 +381,7 @@ def parse_md(md):
     if el.name in ('ve-image', 've-video'):
       el.name = 've-media'
 
-  add_hypothesis = soup.find('ve-add-hypothesis') or soup.find('ve-annotate')
-  custom_style = soup.find('ve-style')
   footer = soup.find('ve-footer')
-  first_heading = soup.find(re.compile('^h[1-6]$'))
   
   _config_tabs(soup)
   _config_cards(soup)
@@ -426,18 +424,18 @@ def j1_md_to_html(src, **args):
   
   logger.info(f'j1_md_to_html: base_url={base_url}, ghp={ghp}, acct={acct}, repo={repo}, ref={ref}, path={path}, prefix={prefix}')
 
-  soup = parse_md(src)
+  soup = parse_md(src, base_url, acct, repo, ref, ghp)
   first_heading = soup.find(re.compile('^h[1-6]$'))
   
-  template = get_gh_file('juncture-digital/server/static/v2.html')
+  template = get_gh_file('juncture-digital/server/static/v1.html')
   if prefix: template = template.replace('window.PREFIX = null', f"window.PREFIX = '{prefix}';")
   if ref: template = template.replace('window.REF = null', f"window.REF = '{ref}';")
   template = BeautifulSoup(template, 'html5lib')
   
-  logger.info(soup)
+  main = soup.html.body.main
   for el in template.find_all('component'):
     if 'v-bind:is' in el.attrs and el.attrs['v-bind:is'] == 'mainComponent':
-      el.append(contents)
+      el.append(main)
       break
 
   meta = soup.find('param', ve_config='')
@@ -459,6 +457,7 @@ def j1_md_to_html(src, **args):
 
   html = template.prettify()
   html = re.sub(r'\s+<p>\s+<\/p>', '', html) # removes empty paragraphs
+  logger.info(html)
   return html
 
 
@@ -631,10 +630,12 @@ def read(src):
   """Read source file"""
   if src.startswith('https://raw.githubusercontent.com'):
     url = src if src.endswith('.md') else src + '.md'
-    resp = requests.get(url)  
+    resp = requests.get(url)
+    logger.info(f'GET {url} ({resp.status_code})')
     if (resp.status_code == 404):
       url = src + '/README.md'
       resp = requests.get(url)
+      logger.info(f'GET {url} ({resp.status_code})')
       if resp.status_code == 404: return None
     return resp.text
   else:
@@ -717,6 +718,7 @@ async def serve(
       src = f'https://raw.githubusercontent.com/{acct}/{repo}/{ref}/{gh_path}'
       resp = convert(src=src, fmt=fmt)
     except:
+      logger.exception(f'Error converting {src}')
       resp = None
     if resp:
       media_type = 'text/html' if fmt.startswith('html') else 'text/markdown' if fmt.startswith('md') else 'text/html' # ?? what mime type for wp?

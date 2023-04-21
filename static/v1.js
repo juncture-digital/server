@@ -951,7 +951,7 @@ function setMetaDescription(description) {
   let el = document.createElement('meta')
   el.name = 'description'
   el.content = description
-  if (app) app.querySelector('head').appendChild(el)
+  if (app) app.querySelector('head')?.appendChild(el)
 }
 function camelToKebab(input) { return input.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase()}
 function isNumeric(arg) { return !isNaN(arg) }
