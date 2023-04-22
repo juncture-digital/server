@@ -3,7 +3,7 @@
 
 '''
 Python app for Juncture site.
-Dependencies: bs4 expiringdict fastapi html5lib lxml Markdown==3.3.6 mdx-breakless-lists prependnewline pymdown-extensions PyYAML requests uvicorn git+https://github.com/rdsnyder/mdx_outline.git git+https://github.com/rdsnyder/markdown-customblocks.git
+Dependencies: bs4 expiringdict fastapi html5lib lxml mangum Markdown==3.3.6 mdx-breakless-lists prependnewline pymdown-extensions PyYAML requests uvicorn git+https://github.com/rdsnyder/mdx_outline.git git+https://github.com/rdsnyder/markdown-customblocks.git
 '''
 
 import logging
@@ -11,8 +11,9 @@ logging.basicConfig(format='%(asctime)s : %(filename)s : %(levelname)s : %(messa
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+WC_VERSION = '2.0.0-beta.30'
 
-import argparse, base64, json, os, re, sys, urllib, yaml
+import argparse, base64, json, os, re, sys, traceback, urllib, yaml
 
 BASEDIR = os.path.abspath(os.path.dirname(__file__))
 sys.path.append(BASEDIR)
@@ -111,9 +112,9 @@ def customblocks_default(ctx, *args, **kwargs):
 ### End Customblocks Config ###
 
 _cache = ExpiringDict(max_len=1000, max_age_seconds=24 * 60 * 60)
-def get_gh_file(url, ref='main'):
-  logger.info(f'get_gh_file {url}')
-  if url in _cache:
+def get_gh_file(url, ref='main', refresh=False, **kwargs):
+  logger.info(f'get_gh_file {url} refresh={refresh}')
+  if not refresh and url in _cache:
     return _cache[url]
   content = None
   if 'github.io' in url:
@@ -139,7 +140,7 @@ def parse_email(s):
     match = re.search(r'<(\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b)>', s)
     return {'name': s.split('<')[0].strip(), 'email': match.group(1)} if match else {'email': s.strip()}
 
-def sendmail(**kwargs):
+def _sendmail(**kwargs):
   api_token = CONFIG['sendinblue_api_token']
   referrer_whitelist = set(CONFIG['referrer_whitelist'])
   referrer = '.'.join(urllib.parse.urlparse(kwargs['referrer']).netloc.split('.')[-2:]) if 'referrer' in kwargs else None
@@ -450,7 +451,7 @@ def j1_md_to_html(src, **args):
   soup = parse_md(src, base_url, acct, repo, ref, ghp)
   first_heading = soup.find(re.compile('^h[1-6]$'))
   
-  template = get_gh_file('juncture-digital/server/static/v1.html')
+  template = get_gh_file('juncture-digital/server/static/v1.html', **args)
   if prefix: template = template.replace('window.PREFIX = null', f"window.PREFIX = '{prefix}';")
   if ref: template = template.replace('window.REF = null', f"window.REF = '{ref}';")
   template = BeautifulSoup(template, 'html5lib')
@@ -508,7 +509,7 @@ def j2_md_to_html(src, **args):
       if prefix:
         el.attrs['essay-base'] = f'{prefix}/{ref}/' + (f'{path}' if path != '/' else '')
   
-  template = get_gh_file('juncture-digital/server/static/v2.html')
+  template = get_gh_file('juncture-digital/server/static/v2.html', **args)
   if prefix: template = template.replace('const PREFIX = null', f"const PREFIX = '{prefix}';")
   if ref: template = template.replace('const REF = null', f"const REF = '{ref}';")
   template = BeautifulSoup(template, 'html5lib')
@@ -520,7 +521,7 @@ def j2_md_to_html(src, **args):
     if css_href:
       if not css_href.startswith('http'):
         _path = f'{prefix}/{path}{css_href[1:]}'
-        content = get_gh_file(_path)
+        content = get_gh_file(_path, **args)
         if content:
           css = content.markdown
 
@@ -582,6 +583,7 @@ def detect_format(src):
 
 def read(src):
   """Read source file"""
+  logger.info(f'read: {src}')
   if src.startswith('https://raw.githubusercontent.com'):
     url = src if src.endswith('.md') else src + '.md'
     resp = requests.get(url)
@@ -653,29 +655,60 @@ async def ignore():
 def pwa_manifest():
   return Response(status_code=200, content=get_gh_file('juncture-digital/server/static/manifest.json'), media_type='application/json')
 
+juncture_path_roots = set('docs examples showcase'.split())
 @app.get('/{path:path}')
 async def serve(
+    request: Request,
     path: Optional[str] = None,
     ref: Optional[str] = 'main',
-    fmt: Optional[str] = 'html'
+    fmt: Optional[str] = 'html',
+    refresh: Optional[bool] = False
   ):
-  logger.info(f'path: {path}, ref: {ref}, fmt: {fmt}')
-  if path:
-    try:
-      acct, repo, *path_elems = path.split('/') if path else ('juncture-digital', 'juncture', '')
-      gh_path = '/'.join(path_elems)
-      src = f'https://raw.githubusercontent.com/{acct}/{repo}/{ref}/{gh_path}'
-      resp = convert(src=src, fmt=fmt)
-    except:
-      logger.exception(f'Error converting {src}')
-      resp = None
-    if resp:
-      media_type = 'text/html' if fmt.startswith('html') else 'text/markdown' if fmt.startswith('md') else 'text/html' # ?? what mime type for wp?
-      return Response(status_code=200, content=resp, media_type=media_type)
+  path_elems = [elem for elem in request.url.path.split('/') if elem]
+  logger.info(path_elems)
+  if path_elems:
+    path_root = path_elems[0]
+    if path_root in ('editor', 'media'):
+      if request.url.hostname == 'localhost':
+        content = open(f'{BASEDIR}/static/{path_root}.html', 'r').read()
+      elif request.url.hostname == 'dev.juncture-digital.org':
+        content = content.replace('https://cdn.jsdelivr.net/npm/juncture-digital/docs', 'https://juncture-digital.github.io/web-components')
+      else:
+        content = get_gh_file(f'juncture-digital/server/static/{path_root}.html', refresh=refresh)
+
+      if request.url.hostname == 'localhost':
+        pass # content = re.sub(r'.*https:\/\/cdn\.jsdelivr\.net\/npm\/juncture-digital\/docs\/css\/index\.css.*', '', content)
+      elif request.url.hostname == 'dev.juncture-digital.org':
+        content = content.replace('https://cdn.jsdelivr.net/npm/juncture-digital/docs', 'https://juncture-digital.github.io/web-components')
+      else:
+        content = content.replace('https://cdn.jsdelivr.net/npm/juncture-digital/docs', f'https://cdn.jsdelivr.net/npm/juncture-digital@{WC_VERSION}/docs')
+        
+      return Response(status_code=200, content=content, media_type='text/html')
     else:
-      return RedirectResponse(url=f'/#/{path}')
+      try:
+        if path_root in juncture_path_roots:
+          path_elems = ['juncture-digital', 'juncture'] + path_elems
+        acct, repo, *path_elems = path_elems if len(path_elems) >= 2 else ('juncture-digital', 'juncture', '')
+        logger.info(f'acct: {acct}, repo: {repo}, path: {path_elems}')
+        file_path = '/'.join(path_elems) 
+        src = f'https://raw.githubusercontent.com/{acct}/{repo}/{ref}/{file_path}'
+        resp = convert(src=src, fmt=fmt, refresh=refresh)
+      except:
+        logger.exception(traceback.format_exc())
+        resp = None
+      if resp:
+        media_type = 'text/html' if fmt.startswith('html') else 'text/markdown' if fmt.startswith('md') else 'text/html' # ?? what mime type for wp?
+        return Response(status_code=200, content=resp, media_type=media_type)
+      else:
+        return RedirectResponse(url=f'/#/{path}')
   else:
-    return Response(status_code=200, content=get_gh_file('juncture-digital/server/static/index.html'), media_type='text/html')
+    if request.url.hostname == 'localhost':
+      content = open(f'{BASEDIR}/static/index.html', 'r').read()
+      content = re.sub(r'https:\/\/cdn\.jsdelivr\.net\/npm\/juncture-digital\/docs\/js\/index\.js', 'http://localhost:5173/src/main.ts', content)
+      content = re.sub(r'.*https:\/\/cdn\.jsdelivr\.net\/npm\/juncture-digital\/docs\/css\/index\.css.*', '', content)
+    else:
+      content = get_gh_file('juncture-digital/server/static/index.html', refresh=refresh)
+    return Response(status_code=200, content=content, media_type='text/html')
 
 @app.post('/html/')
 async def convert_md_to_html(request: Request):
@@ -684,11 +717,39 @@ async def convert_md_to_html(request: Request):
   html = j2_md_to_html(payload['markdown'])
   return Response(status_code=200, content=html, media_type='text/html')
 
+@app.get('/editor/{path:path}')
+@app.get('/media/{path:path}')
+@app.get('/editor')
+@app.get('/media')
+def render_app(
+    request: Request,
+    path: Optional[str] = None,
+    refresh: Optional[bool] = False
+  ):
+  route = request.url.path.split('/')[1]
+  logger.info(f'host={request.url.hostname} route={route} path={path} request.url.path={request.url.path} refresh={refresh}')
+  if request.url.hostname == 'localhost':
+    content = open(f'{BASEDIR}/static/{route}.html', 'r').read()
+  elif request.url.hostname == 'dev.juncture-digital.org':
+    content = html.replace('https://cdn.jsdelivr.net/npm/juncture-digital/docs', 'https://juncture-digital.github.io/web-components')
+  else:
+    content = get_gh_file(f'juncture-digital/server/static/{route}.html', refresh=refresh)
+
+  if request.url.hostname == 'localhost':
+    content = re.sub(r'.*https:\/\/cdn\.jsdelivr\.net\/npm\/juncture-digital\/docs\/css\/index\.css.*', '', content)
+    content = content.replace('https://raw.githubusercontent.com/juncture-digital/juncture/main', '' )
+  elif request.url.hostname == 'dev.juncture-digital.org':
+    content = content.replace('https://cdn.jsdelivr.net/npm/juncture-digital/docs', 'https://juncture-digital.github.io/web-components')
+  else:
+    content = content.replace('https://cdn.jsdelivr.net/npm/juncture-digital/docs', f'https://cdn.jsdelivr.net/npm/juncture-digital@{WC_VERSION}/docs')
+    
+  return Response(status_code=200, content=content, media_type='text/html')
+
 @app.post('/sendmail/')
-async def _sendmail(request: Request):
+async def sendmail(request: Request):
   referrer = request.headers.get('referer')
   body = await request.body()
-  content, status_code = sendmail(**{**json.loads(body), **{'referrer': referrer}})
+  content, status_code = _sendmail(**{**json.loads(body), **{'referrer': referrer}})
   return Response(status_code=status_code, content=content) 
 
 @app.get('/gh-token')

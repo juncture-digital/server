@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+  <link href="https://juncture-digital.github.io/juncture/static/images/favicon.svg" rel="icon" type="image/svg+xml"/>
+  <link href="https://juncture-digital.github.io/juncture/static/images/favicon.png" rel="icon" type="image/png"/>
+  <title>Juncture: Media Tool</title>
+  <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/juncture-digital/docs/css/index.css" type="text/css" rel="stylesheet"/>
+  <style>
+    [v-cloak] {display:none}
+    * {box-sizing:border-box;}
+    /* body {max-width:1000px; margin:auto !important;} */
+    ul {display:none;}
+  </style>
+
+</head>
+<body>
+
+  <div id="app">
+  
+    <ve-header v-if="!inIframe"
+      v-cloak
+      label="Media Tool"
+      background="#5B152E"
+      logo="https://raw.githubusercontent.com/juncture-digital/juncture/main/docs/images/juncture-logo.png"
+      >
+      <ul>
+        <li><a href="/">Home</a></li>
+        <li><a href="/editor" target="_blank">Editor</a></li>
+        <li>auth</li>
+      </ul>
+    </ve-header>
+
+    <ve-content-selector v-if="contentPath !== null" id="contentSelector"
+      compact
+      :content-path="contentPath"
+      mode="media"
+      sticky
+    ></ve-content-selector>
+
+    <ve-add-media-resource-dialog id="addMedia" :show="false" :path="contentPath"></ve-add-media-resource-dialog>
+
+    <ve-media v-if="contentPath" grid cards :style="{marginTop: '12px'}">
+      <ul>
+        <li v-for="manifest, idx in manifests" :key="`grid-${idx}`" v-html="manifest"></li>
+      </ul>
+    </ve-media>
+  
+  </div>
+  
+  <!-- This is used for deep linking of Single Page Apps when hosted with GitHub Pages -->
+  <script type="text/javascript">
+    (function(l) {
+      if (l.search[1] === '/' ) {
+        let decoded = l.search.slice(1).split('&').map(s => s.replace(/~and~/g, '&')).join('?')
+        window.history.replaceState(null, null, l.pathname + decoded + l.hash)
+      }
+    }(window.location))
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/juncture-digital/docs/js/index.js" type="module"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vue@2/dist/vue.min.js"></script>
+  <script type="module">
+    
+    const isDev = window.location.hostname == 'localhost'
+    const wcEndpoint = 'https://cdn.jsdelivr.net/npm/juncture-digital/docs/js/index.js'
+    const iiifEndpoint = 'https://iiif.juncture-digital.org'
+
+    const fileExtensions = new Set(['jp2', 'jpeg', 'jpg', 'mp3', 'mp4', 'ogg', 'ogv', 'png', 'tif', 'tiff', 'webm', 'yaml'])
+    const ignore = new Set(['iiif-props.yaml', 'iiif-props.template.yaml'])
+
+    new Vue({
+    el: '#app',
+    data: () => ({
+      contentPath: null,
+      inIframe: false,
+      root: '',
+      pathRoot: '/',
+      ghAuthToken: null,
+      acct: null,
+      repo: null,
+      userCanUpdate: false,
+      dirList: [],
+    }),
+    computed: {
+      isLoggedIn() { return this.ghAuthToken !== null },
+      manifests() { return Array.from(new Set((this.dirList || [])
+        .filter(item => item.type === 'file')
+        .filter(item => !ignore.has(item.name))
+        .filter(item => fileExtensions.has(item.name.split('.').pop().toLowerCase()))
+        .map(item => `${iiifEndpoint}/gh:${item.root}/${encodeURIComponent(item.name.split('.').slice(0,-1).join('.'))}/manifest.json`)))
+      }
+    },
+    created() {
+      this.inIframe = window.location !== window.parent.location
+      this.ghAuthToken = localStorage.getItem('gh-auth-token')
+      window.addEventListener('storage', (evt) => { this.ghAuthToken = localStorage.getItem('gh-auth-token') })
+    },
+    mounted() {
+      let pathElems = window.location.href.slice(window.origin.length+1).split('/').filter(pe => pe)
+      if (pathElems.length > 0 && pathElems[0] === 'media') {
+        this.pathRoot = '/media/'
+        pathElems = pathElems.slice(1)
+      }
+      this.contentPath = pathElems.length >= 2 ? pathElems.join('/') : (localStorage.getItem('media-path') || '')
+      console.log(`media: contentPath=${this.contentPath}`)
+      this.$nextTick(() => {
+        document.getElementById('contentSelector')?.addEventListener('contentPathChanged', async (evt) => this.parseContentPath(evt.detail[0]))
+        document.getElementById('contentSelector')?.addEventListener('addMediaResource', this.addMediaResource)
+      })
+    },
+    methods: {
+
+      async parseContentPath(path) {
+        let [source, contentSpec] = path.split(':')
+        let [contentPath, argsStr] = contentSpec.split('?');
+        [this.acct, this.repo] = contentPath.split('/')
+        let root = contentPath.split(':').pop().split('?')[0]
+        let filePath = contentPath.split('/').slice(2).join('/')
+        this.userCanUpdate = await document.getElementById('contentSelector')?._instance.exposed.repositoryIsWriteable()
+        console.log(`parseContentPath: acct=${this.acct} repo=${this.repo} contentPath=${contentPath} filePath=${filePath} writeable=${this.userCanUpdate}`)
+        this.contentPath = contentPath
+        window.history.replaceState({}, null, `${this.pathRoot}${contentSpec}`)
+        localStorage.setItem('media-path', contentPath)
+        this.dirList = document.getElementById('contentSelector')?._instance.exposed.getDirList().map(item => {item.root = root; return item})
+      },
+
+      addMediaResource(evt) {
+        console.log('addMediaResource')
+        document.getElementById('addMedia')?._instance.exposed.show(true)
+      }
+
+    },
+    watch: {}
+  })
+  Vue.config.productionTip = false
+  Vue.config.devtools = true
+
+  </script>
+
+</body>
+</html>
