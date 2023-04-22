@@ -3,7 +3,7 @@
 
 '''
 Python app for Juncture site.
-Dependencies: bs4 expiringdict fastapi html5lib lxml Markdown==3.3.6 mdx-breakless-lists prependnewline pymdown-extensions requests uvicorn git+https://github.com/rdsnyder/mdx_outline.git git+https://github.com/rdsnyder/markdown-customblocks.git
+Dependencies: bs4 expiringdict fastapi html5lib lxml Markdown==3.3.6 mdx-breakless-lists prependnewline pymdown-extensions PyYAML requests uvicorn git+https://github.com/rdsnyder/mdx_outline.git git+https://github.com/rdsnyder/markdown-customblocks.git
 '''
 
 import logging
@@ -11,12 +11,8 @@ logging.basicConfig(format='%(asctime)s : %(filename)s : %(levelname)s : %(messa
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-import os
-import json
-import sys
-import re
-import argparse
-import base64
+
+import argparse, base64, json, os, re, sys, urllib, yaml
 
 BASEDIR = os.path.abspath(os.path.dirname(__file__))
 sys.path.append(BASEDIR)
@@ -45,6 +41,8 @@ app.add_middleware(
 
 import requests
 logging.getLogger('requests').setLevel(logging.INFO)
+
+CONFIG = yaml.load(open(f'{BASEDIR}/creds.yaml', 'r').read(), Loader=yaml.FullLoader)
 
 ### Customblocks Config ###
 
@@ -136,6 +134,33 @@ def get_gh_file(url, ref='main'):
   if content:
     _cache[url] = content
   return content
+
+def parse_email(s):
+    match = re.search(r'<(\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b)>', s)
+    return {'name': s.split('<')[0].strip(), 'email': match.group(1)} if match else {'email': s.strip()}
+
+def sendmail(**kwargs):
+  api_token = CONFIG['sendinblue_api_token']
+  referrer_whitelist = set(CONFIG['referrer_whitelist'])
+  referrer = '.'.join(urllib.parse.urlparse(kwargs['referrer']).netloc.split('.')[-2:]) if 'referrer' in kwargs else None
+  if referrer not in referrer_whitelist:
+      return 'Forbidden', 403
+  data = {
+      'sender': parse_email(kwargs['from']),
+      'to': [parse_email(to) for to in kwargs['to']] if isinstance(kwargs['to'],list) else [parse_email(kwargs['to'])],
+      'subject': kwargs['subject'],
+      'htmlContent': kwargs['message']
+  }
+  logger.debug(json.dumps(data, indent=2))
+  resp = requests.post(
+      'https://api.sendinblue.com/v3/smtp/email',
+      headers = {
+          'Content-type': 'application/json; charset=utf-8', 
+          'Accept': 'application/json',
+          'api-key': api_token
+      },
+      data = json.dumps(data))
+  return resp.content, resp.status_code
 
 def convert_urls(soup, base, acct, repo, ref, ghp=False):
   logger.debug(f'convert_urls: base={base} acct={acct} repo={repo} ref={ref} ghp={ghp}')
@@ -658,6 +683,35 @@ async def convert_md_to_html(request: Request):
   payload = json.loads(payload)
   html = j2_md_to_html(payload['markdown'])
   return Response(status_code=200, content=html, media_type='text/html')
+
+@app.post('/sendmail/')
+async def _sendmail(request: Request):
+  referrer = request.headers.get('referer')
+  body = await request.body()
+  content, status_code = sendmail(**{**json.loads(body), **{'referrer': referrer}})
+  return Response(status_code=status_code, content=content) 
+
+@app.get('/gh-token')
+async def gh_token(code: Optional[str] = None, hostname: Optional[str] = None):
+  token = CONFIG['gh_unscoped_token']
+  status_code = 200
+  if code:
+    if hostname in ('127.0.0.1','localhost') or hostname.startswith('192.168.'):
+      token = CONFIG['gh_auth_token']
+    elif hostname in CONFIG['gh_secrets']:
+      resp = requests.post(
+        'https://github.com/login/oauth/access_token',
+        headers={'Accept': 'application/json'},
+        data={
+          'client_id': CONFIG['gh_secrets'][hostname]['gh_client_id'],
+          'client_secret': CONFIG['gh_secrets'][hostname]['gh_client_secret'],
+          'code': code
+        }
+      )
+      status_code = resp.status_code
+      token_obj = resp.json()
+      token = token_obj['access_token'] if status_code == 200 else ''
+  return Response(status_code=status_code, content=token, media_type='text/plain')
 
 if __name__ == '__main__':
   logger.setLevel(logging.INFO)
