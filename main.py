@@ -736,4 +736,7 @@ if __name__ == '__main__':
     uvicorn.run('main:app', port=args['port'], log_level='info', reload=args['reload'])
   else:
     print(convert(**dict([(k,v) for k,v in args.items() if v])))
+else:
+  from mangum import Mangum
+  handler = Mangum(app)
   
