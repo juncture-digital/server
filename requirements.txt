@@ -1,0 +1,15 @@
+bs4==0.0.1
+expiringdict==1.2.2
+fastapi==0.95.1
+html5lib==1.1
+lxml==4.9.2
+mangum==0.17.0
+Markdown==3.3.6
+mdx-breakless-lists==1.0.1
+prependnewline==1.2
+pymdown-extensions==9.11
+PyYAML==6.0
+requests==2.28.2
+uvicorn==0.21.1
+git+https://github.com/rdsnyder/mdx_outline.git
+git+https://github.com/rdsnyder/markdown-customblocks.git

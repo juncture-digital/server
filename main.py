@@ -43,7 +43,7 @@ app.add_middleware(
 import requests
 logging.getLogger('requests').setLevel(logging.INFO)
 
-CONFIG = yaml.load(open(f'{BASEDIR}/creds.yaml', 'r').read(), Loader=yaml.FullLoader)
+CONFIG = yaml.load(open(f'{BASEDIR}/creds.yaml', 'r').read(), Loader=yaml.FullLoader) if os.path.exists(f'{BASEDIR}/creds.yaml') else {}
 
 ### Customblocks Config ###
 
