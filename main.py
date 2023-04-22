@@ -706,6 +706,9 @@ async def serve(
       content = open(f'{BASEDIR}/static/index.html', 'r').read()
       content = re.sub(r'https:\/\/cdn\.jsdelivr\.net\/npm\/juncture-digital\/docs\/js\/index\.js', 'http://localhost:5173/src/main.ts', content)
       content = re.sub(r'.*https:\/\/cdn\.jsdelivr\.net\/npm\/juncture-digital\/docs\/css\/index\.css.*', '', content)
+    elif request.url.hostname == 'dev.juncture-digital.org':
+      content = get_gh_file('juncture-digital/server/static/index.html', ref='dev', refresh=refresh)
+      content = content.replace('https://cdn.jsdelivr.net/npm/juncture-digital/docs', 'https://juncture-digital.github.io/web-components')
     else:
       content = get_gh_file('juncture-digital/server/static/index.html', refresh=refresh)
     return Response(status_code=200, content=content, media_type='text/html')
@@ -716,34 +719,6 @@ async def convert_md_to_html(request: Request):
   payload = json.loads(payload)
   html = j2_md_to_html(payload['markdown'])
   return Response(status_code=200, content=html, media_type='text/html')
-
-@app.get('/editor/{path:path}')
-@app.get('/media/{path:path}')
-@app.get('/editor')
-@app.get('/media')
-def render_app(
-    request: Request,
-    path: Optional[str] = None,
-    refresh: Optional[bool] = False
-  ):
-  route = request.url.path.split('/')[1]
-  logger.info(f'host={request.url.hostname} route={route} path={path} request.url.path={request.url.path} refresh={refresh}')
-  if request.url.hostname == 'localhost':
-    content = open(f'{BASEDIR}/static/{route}.html', 'r').read()
-  elif request.url.hostname == 'dev.juncture-digital.org':
-    content = html.replace('https://cdn.jsdelivr.net/npm/juncture-digital/docs', 'https://juncture-digital.github.io/web-components')
-  else:
-    content = get_gh_file(f'juncture-digital/server/static/{route}.html', refresh=refresh)
-
-  if request.url.hostname == 'localhost':
-    content = re.sub(r'.*https:\/\/cdn\.jsdelivr\.net\/npm\/juncture-digital\/docs\/css\/index\.css.*', '', content)
-    content = content.replace('https://raw.githubusercontent.com/juncture-digital/juncture/main', '' )
-  elif request.url.hostname == 'dev.juncture-digital.org':
-    content = content.replace('https://cdn.jsdelivr.net/npm/juncture-digital/docs', 'https://juncture-digital.github.io/web-components')
-  else:
-    content = content.replace('https://cdn.jsdelivr.net/npm/juncture-digital/docs', f'https://cdn.jsdelivr.net/npm/juncture-digital@{WC_VERSION}/docs')
-    
-  return Response(status_code=200, content=content, media_type='text/html')
 
 @app.post('/sendmail/')
 async def sendmail(request: Request):
