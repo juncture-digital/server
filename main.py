@@ -672,7 +672,7 @@ async def serve(
       if request.url.hostname == 'localhost':
         content = open(f'{BASEDIR}/static/{path_root}.html', 'r').read()
       elif request.url.hostname == 'dev.juncture-digital.org':
-        content = content.replace('https://cdn.jsdelivr.net/npm/juncture-digital/docs', 'https://juncture-digital.github.io/web-components')
+        content = get_gh_file(f'juncture-digital/server/static/{path_root}.html', ref='dev', refresh=refresh)
       else:
         content = get_gh_file(f'juncture-digital/server/static/{path_root}.html', refresh=refresh)
 
