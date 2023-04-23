@@ -30,8 +30,11 @@ from fastapi import FastAPI, Request
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI(title='Juncture', root_path='/')
+if os.path.exists(f'{BASEDIR}/static'):
+  app.mount('/static', StaticFiles(directory='static'), name='static')
 app.add_middleware(
   CORSMiddleware,
   allow_origins=['*'],
@@ -43,8 +46,9 @@ app.add_middleware(
 import requests
 logging.getLogger('requests').setLevel(logging.INFO)
 
-CONFIG = json.loads(os.environ.get('JUNCTURE_CREDS', '{}'))
-# logger.info(json.dumps(CONFIG, indent=2))
+PREFIX = os.environ.get('JUNCTURE_PREFIX', 'juncture-digital/juncture')
+LOCAL_CONTENT_ROOT = os.environ.get('LOCAL_CONTENT_ROOT')
+CREDS = json.loads(os.environ.get('JUNCTURE_CREDS', '{}'))
 
 ### Customblocks Config ###
 
@@ -124,6 +128,7 @@ def get_gh_file(url, ref='main', refresh=False, **kwargs):
       content = resp.text
   else:  
     acct, repo, *path_elems = url.split('/')
+    '''
     url = f'https://api.github.com/repos/{acct}/{repo}/contents/{"/".join(path_elems)}?ref={ref}'
     resp = requests.get(url, headers={
         # 'Authorization': f'Token {GH_ACCESS_TOKEN}',
@@ -133,6 +138,12 @@ def get_gh_file(url, ref='main', refresh=False, **kwargs):
     if resp.status_code == 200:
       resp = resp.json()
       content = base64.b64decode(resp['content']).decode('utf-8')
+    '''
+    url = f'https://raw.githubusercontent.com/{acct}/{repo}/{ref}/{"/".join(path_elems)}'
+    resp = requests.get(url)
+    logger.info(f'{url} {resp.status_code}')
+    if resp.status_code == 200:
+      content = resp.text
   if content:
     _cache[url] = content
   return content
@@ -142,9 +153,9 @@ def parse_email(s):
     return {'name': s.split('<')[0].strip(), 'email': match.group(1)} if match else {'email': s.strip()}
 
 def _sendmail(**kwargs):
-  api_token = CONFIG['sendinblue_api_token']
+  api_token = CREDS['sendinblue_api_token']
   '''
-  referrer_whitelist = set(CONFIG['referrer_whitelist'])
+  referrer_whitelist = set(CREDS['referrer_whitelist'])
   referrer = '.'.join(urllib.parse.urlparse(kwargs['referrer']).netloc.split('.')[-2:]) if 'referrer' in kwargs else None
   if referrer not in referrer_whitelist:
       return 'Forbidden', 403
@@ -167,13 +178,8 @@ def _sendmail(**kwargs):
   return resp.content, resp.status_code
 
 def convert_urls(soup, base, acct, repo, ref, ghp=False):
-  logger.debug(f'convert_urls: base={base} acct={acct} repo={repo} ref={ref} ghp={ghp}')
-  
-  # remove Github badges
-  for img in soup.find_all('img'):
-    if 've-button.png' in img.attrs['src']:
-      img.parent.decompose()
-  
+  logger.info(f'convert_urls: base={base} acct={acct} repo={repo} ref={ref} ghp={ghp}')
+
   # convert absolute links
   for elem in soup.find_all(href=True):
     if elem.attrs['href'].startswith('http'):
@@ -401,7 +407,13 @@ def parse_md(md, base_url, acct, repo, ref, ghp):
   
   soup = BeautifulSoup(html, 'html5lib')
 
-  convert_urls(soup, base_url, acct, repo, ref, ghp)
+  # remove Github badges
+  for img in soup.find_all('img'):
+    if 've-button.png' in img.attrs['src']:
+      img.parent.decompose()
+  
+  if PREFIX == 'juncture-digital/juncture':
+    convert_urls(soup, base_url, acct, repo, ref, ghp)
 
   for el in soup.findAll(re.compile("^ve-.+")):
     el.attrs = dict([(k,v if v != 'true' else None) for k,v in el.attrs.items()])
@@ -447,15 +459,20 @@ def j1_md_to_html(src, **args):
   repo = args.pop('repo', None)
   ref = args.pop('ref', 'main')
   path = args.pop('path', None)
-  prefix = ''
+  env = args.pop('env', 'prod')
   
-  logger.info(f'j1_md_to_html: base_url={base_url}, ghp={ghp}, acct={acct}, repo={repo}, ref={ref}, path={path}, prefix={prefix}')
+  logger.info(f'j1_md_to_html: base_url={base_url} ghp={ghp} acct={acct} repo={repo} ref={ref} path={path} env={env}')
 
   soup = parse_md(src, base_url, acct, repo, ref, ghp)
   first_heading = soup.find(re.compile('^h[1-6]$'))
   
-  template = get_gh_file('juncture-digital/server/static/v1.html', **args)
-  if prefix: template = template.replace('window.PREFIX = null', f"window.PREFIX = '{prefix}';")
+  if env == 'local':
+    template = open(f'{BASEDIR}/static/v1.html', 'r').read()
+    template = re.sub(r'https:\/\/juncture-digital\.github\.io\/server', '', template)
+  else:
+    template = get_gh_file('juncture-digital/server/static/v1.html', **args)
+  template = template.replace('window.PREFIX = null', f"window.PREFIX = '{acct}/{repo}';")
+  template = template.replace('window.IS_JUNCTURE = null', f"window.IS_JUNCTURE = {'true' if PREFIX == 'juncture-digital/juncture' else 'false'};")
   if ref: template = template.replace('window.REF = null', f"window.REF = '{ref}';")
   template = BeautifulSoup(template, 'html5lib')
   
@@ -482,10 +499,10 @@ def j1_md_to_html(src, **args):
     title.string = first_heading.text
     template.head.append(title)
 
-  html = template.prettify()
+  html = str(template)
+  # html = template.prettify()
   html = re.sub(r'\s+<p>\s+<\/p>', '', html) # removes empty paragraphs
   return html
-
 
 def j2_md_to_html(src, **args):
   """Convert Juncture version 2 markdown to HTML"""
@@ -496,24 +513,29 @@ def j2_md_to_html(src, **args):
   repo = args.pop('repo', None)
   ref = args.pop('ref', 'main')
   path = args.pop('path', None)
+  env = args.pop('env', 'prod')
   prefix = ''
   
-  logger.info(f'j2_md_to_html: base_url={base_url}, ghp={ghp}, acct={acct}, repo={repo}, ref={ref}, path={path}, prefix={prefix}')
+  logger.info(f'j2_md_to_html: base_url={base_url}, ghp={ghp}, acct={acct}, repo={repo}, ref={ref}, path={path}, PREFIX={PREFIX}')
 
   soup = parse_md(src, base_url, acct, repo, ref, ghp)
 
   css = ''
   meta = soup.find('ve-meta')
 
-  if prefix:
-    for el in soup.find_all('ve-media'):
-      el.attrs['anno-base'] = prefix + (f'/{path}' if path != '/' else '')
-    for el in soup.find_all('ve-map'):
-      if prefix:
-        el.attrs['essay-base'] = f'{prefix}/{ref}/' + (f'{path}' if path != '/' else '')
+  for el in soup.find_all('ve-media'):
+    el.attrs['anno-base'] = f'{acct}/{repo}{path}'
+  for el in soup.find_all('ve-map'):
+    if prefix:
+      el.attrs['essay-base'] = f'{acct}/{repo}{path}'
   
-  template = get_gh_file('juncture-digital/server/static/v2.html', **args)
-  if prefix: template = template.replace('const PREFIX = null', f"const PREFIX = '{prefix}';")
+  if env == 'local':
+    template = open(f'{BASEDIR}/static/v2.html', 'r').read()
+    template = re.sub(r'https:\/\/cdn\.jsdelivr\.net\/npm\/juncture-digital\/docs\/js\/index\.js', 'http://localhost:5173/src/main.ts', template)
+    template = re.sub(r'.*https:\/\/cdn\.jsdelivr\.net\/npm\/juncture-digital\/docs\/css\/index\.css.*', '', template)
+  else:
+    template = get_gh_file('juncture-digital/server/static/v2.html', **args)
+  template = template.replace('const PREFIX = null', f"const PREFIX = '{prefix}';")
   if ref: template = template.replace('const REF = null', f"const REF = '{ref}';")
   template = BeautifulSoup(template, 'html5lib')
   template.body.insert(0, soup.html.body.main)
@@ -569,8 +591,8 @@ def j2_md_to_html(src, **args):
     title.string = first_heading.text
     template.head.append(title)
     
-  # html = str(template)
-  html = template.prettify()
+  html = str(template)
+  # html = template.prettify()
   html = re.sub(r'\s+<p>\s+<\/p>', '', html) # removes empty paragraphs
   
   return html
@@ -586,28 +608,32 @@ def detect_format(src):
 
 def read(src):
   """Read source file"""
-  logger.info(f'read: {src}')
+  # logger.info(f'read: {src}')
   if src.startswith('https://raw.githubusercontent.com'):
     url = src if src.endswith('.md') else src + '.md'
     resp = requests.get(url)
-    logger.info(f'GET {url} ({resp.status_code})')
+    # logger.info(f'GET {url} ({resp.status_code})')
     if (resp.status_code == 404):
       url = src + '/README.md'
       resp = requests.get(url)
-      logger.info(f'GET {url} ({resp.status_code})')
+      # logger.info(f'GET {url} ({resp.status_code})')
       if resp.status_code == 404: return None
     return resp.text
   else:
-    with open(src, 'r') as f:
-      return f.read()
+    src = src[:-1] if src.endswith('/') else src
+    for ext in ('', '.md', '/README.md'):
+      path = f'{src}{ext}'
+      if os.path.isfile(path):
+        with open(path, 'r') as f:
+          return f.read()
 
-def convert(src, fmt, **args):
+def convert(src, fmt, env, **args):
   """Convert source file to specified format"""
   if src.startswith('https://raw.githubusercontent.com'):
     path_elems = src.split('/')[3:]
     acct, repo, ref, *path_elems = path_elems
     path = '/' + '/'.join(path_elems)
-    args = {**args, 'acct': acct, 'repo': repo, 'ref': ref, 'path': path}
+    args = {**args, 'acct': acct, 'repo': repo, 'ref': ref, 'path': path, 'env': env}
 
   content = read(src)
   if not content: return None
@@ -664,7 +690,28 @@ async def environ():
   return Response(status_code=200, content=json.dumps(dict(os.environ)), media_type='application/json')
 '''
 
-juncture_path_roots = set('docs examples showcase'.split())
+@app.get('/gh-token')
+async def gh_token(code: Optional[str] = None, hostname: Optional[str] = None):
+  token = CREDS['gh_unscoped_token']
+  status_code = 200
+  if code:
+    if hostname in ('127.0.0.1','localhost') or hostname.startswith('192.168.'):
+      token = CREDS['gh_auth_token']
+    elif hostname in CREDS['gh_secrets']:
+      resp = requests.post(
+        'https://github.com/login/oauth/access_token',
+        headers={'Accept': 'application/json'},
+        data={
+          'client_id': CREDS['gh_secrets'][hostname]['gh_client_id'],
+          'client_secret': CREDS['gh_secrets'][hostname]['gh_client_secret'],
+          'code': code
+        }
+      )
+      status_code = resp.status_code
+      token_obj = resp.json()
+      token = token_obj['access_token'] if status_code == 200 else ''
+  return Response(status_code=status_code, content=token, media_type='text/plain')
+
 @app.get('/{path:path}')
 async def serve(
     request: Request,
@@ -674,52 +721,66 @@ async def serve(
     refresh: Optional[bool] = False
   ):
   path_elems = [elem for elem in request.url.path.split('/') if elem]
-  if path_elems:
-    path_root = path_elems[0]
-    if path_root in ('editor', 'media'):
-      if request.url.hostname == 'localhost':
-        content = open(f'{BASEDIR}/static/{path_root}.html', 'r').read()
-      elif request.url.hostname == 'dev.juncture-digital.org':
-        content = get_gh_file(f'juncture-digital/server/static/{path_root}.html', ref='dev', refresh=refresh)
-      else:
-        content = get_gh_file(f'juncture-digital/server/static/{path_root}.html', refresh=refresh)
+  env = 'local' if request.url.hostname == 'localhost' else 'dev' if request.url.hostname == 'dev.juncture-digital.org' else 'prod'
 
-      if request.url.hostname == 'localhost':
-        pass # content = re.sub(r'.*https:\/\/cdn\.jsdelivr\.net\/npm\/juncture-digital\/docs\/css\/index\.css.*', '', content)
-      elif request.url.hostname == 'dev.juncture-digital.org':
-        content = content.replace('https://cdn.jsdelivr.net/npm/juncture-digital/docs', 'https://juncture-digital.github.io/web-components')
+  if PREFIX == 'juncture-digital/juncture':
+    path_root = path_elems[0] if path_elems else 'index'
+    logger.info(f'path_root: {path_root} env: {env}') 
+    if path_root in ('index', 'editor', 'media'):
+      if env == 'local':
+        content = open(f'{BASEDIR}/static/{path_root}.html', 'r').read()
       else:
+        content = get_gh_file(
+          f'juncture-digital/server/static/{path_root}.html', 
+          ref='dev' if request.url.hostname == 'dev.juncture-digital.org' else 'main', 
+          refresh=refresh)
+
+      if env == 'local':
+        content = re.sub(r'https:\/\/cdn\.jsdelivr\.net\/npm\/juncture-digital\/docs\/js\/index\.js', 'http://localhost:5173/src/main.ts', content)
+        content = re.sub(r'.*https:\/\/cdn\.jsdelivr\.net\/npm\/juncture-digital\/docs\/css\/index\.css.*', '', content)
+      elif env == 'dev':
+        content = content.replace('https://cdn.jsdelivr.net/npm/juncture-digital/docs', 'https://juncture-digital.github.io/web-components')
+      else: # prod
         content = content.replace('https://cdn.jsdelivr.net/npm/juncture-digital/docs', f'https://cdn.jsdelivr.net/npm/juncture-digital@{WC_VERSION}/docs')
-        
       return Response(status_code=200, content=content, media_type='text/html')
+    
     else:
+      if path_root in ['docs', 'examples', 'showcase'] or len(path_elems) < 2:
+        path_elems = ['juncture-digital', 'juncture'] + path_elems
+
       try:
-        if path_root in juncture_path_roots:
-          path_elems = ['juncture-digital', 'juncture'] + path_elems
-        acct, repo, *path_elems = path_elems if len(path_elems) >= 2 else ('juncture-digital', 'juncture', '')
-        logger.debug(f'acct: {acct}, repo: {repo}, path: {path_elems}')
+        acct, repo, *path_elems = path_elems
         file_path = '/'.join(path_elems) 
-        src = f'https://raw.githubusercontent.com/{acct}/{repo}/{ref}/{file_path}'
-        resp = convert(src=src, fmt=fmt, refresh=refresh)
+        logger.debug(f'acct: {acct}, repo: {repo}, path: {path_elems}')
+        if env == 'local':
+          src = f'{BASEDIR}/{path}'
+        else:
+          src = f'https://raw.githubusercontent.com/{acct}/{repo}/{env}/{file_path}'
+        if path_root == 'docs':
+          content = read(src)
+        else:
+          content = convert(src=src, fmt=fmt, env=env, refresh=refresh)
       except:
         logger.exception(traceback.format_exc())
-        resp = None
-      if resp:
-        media_type = 'text/html' if fmt.startswith('html') else 'text/markdown' if fmt.startswith('md') else 'text/html' # ?? what mime type for wp?
-        return Response(status_code=200, content=resp, media_type=media_type)
+        content = None
+      if content:
+        media_type = 'text/html' if fmt.startswith('html') else 'text/markdown' if fmt.startswith('md') else 'text/plain' # ?? what mime type for wp?
+        return Response(status_code=200, content=content, media_type=media_type)
       else:
         return RedirectResponse(url=f'/#/{path}')
+
   else:
-    if request.url.hostname == 'localhost':
-      content = open(f'{BASEDIR}/static/index.html', 'r').read()
-      content = re.sub(r'https:\/\/cdn\.jsdelivr\.net\/npm\/juncture-digital\/docs\/js\/index\.js', 'http://localhost:5173/src/main.ts', content)
-      content = re.sub(r'.*https:\/\/cdn\.jsdelivr\.net\/npm\/juncture-digital\/docs\/css\/index\.css.*', '', content)
-    elif request.url.hostname == 'dev.juncture-digital.org':
-      content = get_gh_file('juncture-digital/server/static/index.html', ref='dev', refresh=refresh)
-      content = content.replace('https://cdn.jsdelivr.net/npm/juncture-digital/docs', 'https://juncture-digital.github.io/web-components')
-    else:
-      content = get_gh_file('juncture-digital/server/static/index.html', refresh=refresh)
-    return Response(status_code=200, content=content, media_type='text/html')
+    if env == 'local':
+      acct, repo = PREFIX.split('/')
+      args = {'acct': acct, 'repo': repo, 'path': path, 'env': env}
+      if LOCAL_CONTENT_ROOT:
+        src = f'{LOCAL_CONTENT_ROOT}/{path}'
+      else:
+        src = f'https://raw.githubusercontent.com/{PREFIX}/{ref}/{path}'
+      content = convert(src=src, fmt=fmt, refresh=refresh, **args)    
+      if content:
+        media_type = 'text/html' if fmt.startswith('html') else 'text/markdown' if fmt.startswith('md') else 'text/plain'
+        return Response(status_code=200, content=content, media_type=media_type)
 
 @app.post('/html/')
 async def convert_md_to_html(request: Request):
@@ -735,28 +796,6 @@ async def sendmail(request: Request):
   content, status_code = _sendmail(**{**json.loads(body), **{'referrer': referrer}})
   return Response(status_code=status_code, content=content) 
 
-@app.get('/gh-token')
-async def gh_token(code: Optional[str] = None, hostname: Optional[str] = None):
-  token = CONFIG['gh_unscoped_token']
-  status_code = 200
-  if code:
-    if hostname in ('127.0.0.1','localhost') or hostname.startswith('192.168.'):
-      token = CONFIG['gh_auth_token']
-    elif hostname in CONFIG['gh_secrets']:
-      resp = requests.post(
-        'https://github.com/login/oauth/access_token',
-        headers={'Accept': 'application/json'},
-        data={
-          'client_id': CONFIG['gh_secrets'][hostname]['gh_client_id'],
-          'client_secret': CONFIG['gh_secrets'][hostname]['gh_client_secret'],
-          'code': code
-        }
-      )
-      status_code = resp.status_code
-      token_obj = resp.json()
-      token = token_obj['access_token'] if status_code == 200 else ''
-  return Response(status_code=status_code, content=token, media_type='text/plain')
-
 if __name__ == '__main__':
   logger.setLevel(logging.INFO)
   parser = argparse.ArgumentParser(description='Juncture content converters')
@@ -767,19 +806,23 @@ if __name__ == '__main__':
   parser.add_argument('--repo', help='Github repo')
   parser.add_argument('--ref', help='Github ref')
   parser.add_argument('--path', help='Github path')
-  parser.add_argument('--prefix', help='Github path')
+  parser.add_argument('--prefix', default='juncture-digital/juncture', help='Github path')
   
   parser.add_argument('--serve', type=bool, default=False, help='Serve converted content')
   parser.add_argument('--reload', type=bool, default=False, help='Reload on change')
   parser.add_argument('--port', type=int, default=8080, help='HTTP port')
+  parser.add_argument('--content', help='Local content root')
 
   args = vars(parser.parse_args())
-  logger.info(args)
+  os.environ['JUNCTURE_PREFIX'] = args['prefix']
+  if  args['content']:
+    root = os.path.abspath(args['content'])
+    os.environ['LOCAL_CONTENT_ROOT'] = root
   
   if args['serve']:
+    print(f'\nPREFIX: {os.environ["JUNCTURE_PREFIX"]}\nLOCAL_CONTENT_ROOT: {os.environ.get("LOCAL_CONTENT_ROOT")}\n')
     uvicorn.run('main:app', port=args['port'], log_level='info', reload=args['reload'])
-  else:
-    print(convert(**dict([(k,v) for k,v in args.items() if v])))
+
 elif 'VERCEL' not in os.environ:
   from mangum import Mangum
   handler = Mangum(app)

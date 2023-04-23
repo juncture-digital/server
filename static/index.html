@@ -17,7 +17,7 @@
 
   <div id="app"></div>
   <script>
-    let basePath = location.hostname === 'localhosts'
+    let basePath = location.hostname === 'localhost'
       ? '/docs/'
       : `https://raw.githubusercontent.com/juncture-digital/juncture/${location.hostname === 'dev.juncture-digital.org' ? 'dev' : 'main'}/docs/`
     window.$docsify = {

@@ -1,0 +1,191 @@
+[
+  {
+    "type": "Annotation",
+    "body": [
+      {
+        "type": "TextualBody",
+        "value": "Github content tool",
+        "purpose": "commenting"
+      }
+    ],
+    "target": {
+      "source": "https://iiif-image.juncture-digital.org/iiif/2/50ae2d63e3bc3496df935a3d23f4c63a7cae7de1bbed0e218171d179cbbc252a",
+      "selector": {
+        "type": "FragmentSelector",
+        "conformsTo": "http://www.w3.org/TR/media-frags/",
+        "value": "xywh=pixel:6.604503631591797,83.82886505126953,989.888843536377,57.53667449951172"
+      },
+      "id": "50ae2d63"
+    },
+    "@context": "http://www.w3.org/ns/anno.jsonld",
+    "id": "c67efb55"
+  },
+  {
+    "type": "Annotation",
+    "body": [
+      {
+        "type": "TextualBody",
+        "value": "Markdown toolbar",
+        "purpose": "commenting"
+      }
+    ],
+    "target": {
+      "source": "https://iiif-image.juncture-digital.org/iiif/2/50ae2d63e3bc3496df935a3d23f4c63a7cae7de1bbed0e218171d179cbbc252a",
+      "selector": {
+        "type": "FragmentSelector",
+        "conformsTo": "http://www.w3.org/TR/media-frags/",
+        "value": "xywh=pixel:7.167007923126221,143.79649353027344,347.2969813346863,46.73503112792969"
+      },
+      "id": "50ae2d63"
+    },
+    "@context": "http://www.w3.org/ns/anno.jsonld",
+    "id": "442d8b11"
+  },
+  {
+    "type": "Annotation",
+    "body": [
+      {
+        "type": "TextualBody",
+        "value": "Juncture toolbar",
+        "purpose": "commenting"
+      }
+    ],
+    "target": {
+      "source": "https://iiif-image.juncture-digital.org/iiif/2/50ae2d63e3bc3496df935a3d23f4c63a7cae7de1bbed0e218171d179cbbc252a",
+      "selector": {
+        "type": "FragmentSelector",
+        "conformsTo": "http://www.w3.org/TR/media-frags/",
+        "value": "xywh=pixel:913.3961791992188,146.46347045898438,87.90008544921875,45.49595642089844"
+      },
+      "id": "50ae2d63"
+    },
+    "@context": "http://www.w3.org/ns/anno.jsonld",
+    "id": "665f09a2"
+  },
+  {
+    "type": "Annotation",
+    "body": [
+      {
+        "type": "TextualBody",
+        "value": "Save",
+        "purpose": "commenting"
+      }
+    ],
+    "target": {
+      "source": "https://iiif-image.juncture-digital.org/iiif/2/50ae2d63e3bc3496df935a3d23f4c63a7cae7de1bbed0e218171d179cbbc252a",
+      "selector": {
+        "type": "FragmentSelector",
+        "conformsTo": "http://www.w3.org/TR/media-frags/",
+        "value": "xywh=pixel:915.33544921875,146.5028076171875,39.40673828125,42.974517822265625"
+      },
+      "id": "50ae2d63"
+    },
+    "@context": "http://www.w3.org/ns/anno.jsonld",
+    "id": "b6d6e746"
+  },
+  {
+    "type": "Annotation",
+    "body": [
+      {
+        "type": "TextualBody",
+        "value": "Share",
+        "purpose": "commenting"
+      }
+    ],
+    "target": {
+      "source": "https://iiif-image.juncture-digital.org/iiif/2/50ae2d63e3bc3496df935a3d23f4c63a7cae7de1bbed0e218171d179cbbc252a",
+      "selector": {
+        "type": "FragmentSelector",
+        "conformsTo": "http://www.w3.org/TR/media-frags/",
+        "value": "xywh=pixel:957.4524536132812,146.58541870117188,37.4635009765625,42.52607727050781"
+      },
+      "id": "50ae2d63"
+    },
+    "@context": "http://www.w3.org/ns/anno.jsonld",
+    "id": "ea5bd304"
+  },
+  {
+    "type": "Annotation",
+    "body": [
+      {
+        "type": "TextualBody",
+        "value": "Preview toggle",
+        "purpose": "commenting"
+      }
+    ],
+    "target": {
+      "source": "https://iiif-image.juncture-digital.org/iiif/2/50ae2d63e3bc3496df935a3d23f4c63a7cae7de1bbed0e218171d179cbbc252a",
+      "selector": {
+        "type": "FragmentSelector",
+        "conformsTo": "http://www.w3.org/TR/media-frags/",
+        "value": "xywh=pixel:899.6600952148438,1337.1505126953125,83.447265625,79.478271484375"
+      },
+      "id": "50ae2d63"
+    },
+    "@context": "http://www.w3.org/ns/anno.jsonld",
+    "id": "0e305489"
+  },
+  {
+    "type": "Annotation",
+    "body": [
+      {
+        "type": "TextualBody",
+        "value": "Viewer tag",
+        "purpose": "commenting"
+      }
+    ],
+    "target": {
+      "source": "https://iiif-image.juncture-digital.org/iiif/2/50ae2d63e3bc3496df935a3d23f4c63a7cae7de1bbed0e218171d179cbbc252a",
+      "selector": {
+        "type": "FragmentSelector",
+        "conformsTo": "http://www.w3.org/TR/media-frags/",
+        "value": "xywh=pixel:7.623304843902588,555.96240234375,432.3924117088318,39.12347412109375"
+      },
+      "id": "50ae2d63"
+    },
+    "@context": "http://www.w3.org/ns/anno.jsonld",
+    "id": "3f63ff16"
+  },
+  {
+    "type": "Annotation",
+    "body": [
+      {
+        "type": "TextualBody",
+        "value": "Main editor window",
+        "purpose": "commenting"
+      }
+    ],
+    "target": {
+      "source": "https://iiif-image.juncture-digital.org/iiif/2/50ae2d63e3bc3496df935a3d23f4c63a7cae7de1bbed0e218171d179cbbc252a",
+      "selector": {
+        "type": "FragmentSelector",
+        "conformsTo": "http://www.w3.org/TR/media-frags/",
+        "value": "xywh=pixel:5.212011814117432,193.00575256347656,995.4470458030701,1267.8563079833984"
+      },
+      "id": "50ae2d63"
+    },
+    "@context": "http://www.w3.org/ns/anno.jsonld",
+    "id": "134e67a0"
+  },
+  {
+    "type": "Annotation",
+    "body": [
+      {
+        "type": "TextualBody",
+        "value": "Marks essay text for viewer actions",
+        "purpose": "commenting"
+      }
+    ],
+    "target": {
+      "source": "https://iiif-image.juncture-digital.org/iiif/2/50ae2d63e3bc3496df935a3d23f4c63a7cae7de1bbed0e218171d179cbbc252a",
+      "selector": {
+        "type": "FragmentSelector",
+        "conformsTo": "http://www.w3.org/TR/media-frags/",
+        "value": "xywh=pixel:311.1629943847656,148.2296600341797,43.950042724609375,38.86784362792969"
+      },
+      "id": "50ae2d63"
+    },
+    "@context": "http://www.w3.org/ns/anno.jsonld",
+    "id": "490ccb15"
+  }
+]

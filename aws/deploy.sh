@@ -7,16 +7,12 @@ cd "$(dirname "$0")"
 mkdir -p build
 
 rsync -va Dockerfile build
-rsync -va ../main.py ../creds.yaml build
+rsync -va ../main.py build
 
-aws lambda update-function-configuration \
-  --function-name ${FUNCTION_NAME} \
-  --environment "Variables={JUNCTURE_CREDS='${JUNCTURE_CREDS}'}"
+# aws lambda update-function-configuration --function-name ${FUNCTION_NAME} --environment "Variables={JUNCTURE_CREDS='${JUNCTURE_CREDS}'}"
 
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${AWS_ACCOUNT}.dkr.ecr.us-east-1.amazonaws.com
 docker buildx build --platform linux/amd64 --push -t ${AWS_ACCOUNT}.dkr.ecr.us-east-1.amazonaws.com/${FUNCTION_NAME} build
-aws lambda update-function-code \
-  --function-name ${FUNCTION_NAME} \
-  --image-uri ${AWS_ACCOUNT}.dkr.ecr.us-east-1.amazonaws.com/${FUNCTION_NAME}:latest \
+aws lambda update-function-code --function-name ${FUNCTION_NAME} --image-uri ${AWS_ACCOUNT}.dkr.ecr.us-east-1.amazonaws.com/${FUNCTION_NAME}:latest
 
 rm -rf build

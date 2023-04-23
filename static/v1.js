@@ -1,10 +1,10 @@
-const junctureDomains = new Set(['juncture-digital.org', 'www.juncture-digital.org', 'beta.juncture-digital.org', 'dev.juncture-digital.org', 'localhost:8080', 'localhost:5555'])
-const isJuncture = junctureDomains.has(location.host)
+const junctureDomains = new Set(['juncture-digital.org', 'www.juncture-digital.org', 'beta.juncture-digital.org', 'dev.juncture-digital.org', 'localhost:8080'])
 let PREFIX = window.PREFIX
 let REF = window.REF
-console.log(`PREFIX=${PREFIX} REF=${REF} host=${location.host} isJuncture=${isJuncture}`)
+let IS_JUNCTURE = window.IS_JUNCTURE
+console.log(`PREFIX=${PREFIX} REF=${REF} host=${location.host} IS_JUNCTURE=${IS_JUNCTURE}`)
 
-const ghToken = atob('Z2hwX05lcnV2RUYzRmx6M3o5YnFjQWZuOGpJQnJMR3lEMTNmYjYyVw==')
+const ghToken = atob('Z2hwX0RJdFlxdWtoNzgxSE5jdFI3bHVSQ01tYVQwTmJ5VzBnOTh3TQ==')
 const qargs = window.location.href.indexOf('?') > 0 ? parseQueryString(window.location.href.split('?')[1]) : {}
 const componentPrefix = 've1-'
 const dirCache = {}
@@ -23,7 +23,7 @@ const componentsList = await getComponentsList()
 const availableViewers = []
 
 // Remove ref query argument from browser URL if same as REF
-if (!isJuncture) {
+if (!IS_JUNCTURE) {
   let re = new RegExp(`^\/${PREFIX}`)
   let browserPath = `${location.origin}${location.pathname.replace(re,'')}`
   if (qargs.ref && qargs.ref !== REF) browserPath += `?ref=${qargs.ref}`
@@ -80,7 +80,7 @@ let _vue = new Vue({
     hoverItem: undefined,
     html: document.querySelector('#essay component').innerHTML,
     items: [],
-    isJuncture,
+    isJuncture: IS_JUNCTURE,
     junctureVersion: '0.5.0',
     layouts: ['visual-essay vertical'],
     markdown: null,
@@ -183,7 +183,7 @@ let _vue = new Vue({
         let newPage = contentSource.source === 'github'
           ? contentSource.isGhp
             ? `/${contentSource.repo}${path}`
-            : isJuncture
+            : IS_JUNCTURE
               ? `/${contentSource.acct}/${contentSource.repo}${path}`
               : path
           : path
@@ -992,12 +992,12 @@ function convertURL(current, base) {
     pathElems = (base || window.location.pathname).split('/').filter(elem => elem)
     pathElems = [...pathElems, ..._current.split('/').filter(elem => elem)]
   }
-  if (isJuncture && pathElems.length >= 2) {
+  if (IS_JUNCTURE && pathElems.length >= 2) {
     if ((contentSource.repo !== 'juncture' || contentSource.acct !== 'jstor-labs') && pathElems[0] === contentSource.acct && pathElems[1] === contentSource.repo) pathElems = pathElems.slice(2)
   } else if (pathElems[0] === contentSource.repo) {
     pathElems = pathElems.slice(1)
   }
   let converted = `${contentSource.assetsBaseUrl || contentSource.baseUrl}/${pathElems.join('/')}`
-  // console.log(`isJuncture=${isJuncture} convertURL: current=${current} converted=${converted} path=${path} pathElems=${pathElems}`)
+  // console.log(`IS_JUNCTURE=${IS_JUNCTURE} convertURL: current=${current} converted=${converted} path=${path} pathElems=${pathElems}`)
   return converted
 }
