@@ -43,7 +43,8 @@ app.add_middleware(
 import requests
 logging.getLogger('requests').setLevel(logging.INFO)
 
-CONFIG = yaml.load(open(f'{BASEDIR}/creds.yaml', 'r').read(), Loader=yaml.FullLoader) if os.path.exists(f'{BASEDIR}/creds.yaml') else {}
+CONFIG = json.loads(os.environ.get('JUNCTURE_CREDS', '{}'))
+# logger.info(json.dumps(CONFIG, indent=2))
 
 ### Customblocks Config ###
 
@@ -142,10 +143,12 @@ def parse_email(s):
 
 def _sendmail(**kwargs):
   api_token = CONFIG['sendinblue_api_token']
+  '''
   referrer_whitelist = set(CONFIG['referrer_whitelist'])
   referrer = '.'.join(urllib.parse.urlparse(kwargs['referrer']).netloc.split('.')[-2:]) if 'referrer' in kwargs else None
   if referrer not in referrer_whitelist:
       return 'Forbidden', 403
+  '''
   data = {
       'sender': parse_email(kwargs['from']),
       'to': [parse_email(to) for to in kwargs['to']] if isinstance(kwargs['to'],list) else [parse_email(kwargs['to'])],
@@ -655,6 +658,12 @@ async def ignore():
 def pwa_manifest():
   return Response(status_code=200, content=get_gh_file('juncture-digital/server/static/manifest.json'), media_type='application/json')
 
+'''
+@app.get('/env')
+async def environ():
+  return Response(status_code=200, content=json.dumps(dict(os.environ)), media_type='application/json')
+'''
+
 juncture_path_roots = set('docs examples showcase'.split())
 @app.get('/{path:path}')
 async def serve(
@@ -665,7 +674,6 @@ async def serve(
     refresh: Optional[bool] = False
   ):
   path_elems = [elem for elem in request.url.path.split('/') if elem]
-  logger.info(path_elems)
   if path_elems:
     path_root = path_elems[0]
     if path_root in ('editor', 'media'):
@@ -689,7 +697,7 @@ async def serve(
         if path_root in juncture_path_roots:
           path_elems = ['juncture-digital', 'juncture'] + path_elems
         acct, repo, *path_elems = path_elems if len(path_elems) >= 2 else ('juncture-digital', 'juncture', '')
-        logger.info(f'acct: {acct}, repo: {repo}, path: {path_elems}')
+        logger.debug(f'acct: {acct}, repo: {repo}, path: {path_elems}')
         file_path = '/'.join(path_elems) 
         src = f'https://raw.githubusercontent.com/{acct}/{repo}/{ref}/{file_path}'
         resp = convert(src=src, fmt=fmt, refresh=refresh)
@@ -772,7 +780,6 @@ if __name__ == '__main__':
     uvicorn.run('main:app', port=args['port'], log_level='info', reload=args['reload'])
   else:
     print(convert(**dict([(k,v) for k,v in args.items() if v])))
-else:
+elif 'VERCEL' not in os.environ:
   from mangum import Mangum
   handler = Mangum(app)
-  

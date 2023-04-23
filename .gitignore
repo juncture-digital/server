@@ -1,5 +1,5 @@
 .venv
 *.pyc
 local
-creds.yaml
+creds.*
 .vercel
