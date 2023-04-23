@@ -19,7 +19,7 @@
   <script>
     let basePath = location.hostname === 'localhost'
       ? '/docs/'
-      : `https://raw.githubusercontent.com/juncture-digital/juncture/${location.hostname === 'dev.juncture-digital.org' ? 'dev' : 'main'}/docs/`
+      : `https://raw.githubusercontent.com/juncture-digital/server/${location.hostname === 'dev.juncture-digital.org' ? 'dev' : 'main'}/docs/`
     window.$docsify = {
       alias: { '.*/_sidebar.md': '/_sidebar.md' },
       autoHeader: false,

@@ -46,7 +46,7 @@ app.add_middleware(
 import requests
 logging.getLogger('requests').setLevel(logging.INFO)
 
-PREFIX = os.environ.get('JUNCTURE_PREFIX', 'juncture-digital/juncture')
+PREFIX = os.environ.get('JUNCTURE_PREFIX', 'juncture-digital/server')
 LOCAL_CONTENT_ROOT = os.environ.get('LOCAL_CONTENT_ROOT')
 CREDS = json.loads(os.environ.get('JUNCTURE_CREDS', '{}'))
 
@@ -412,7 +412,7 @@ def parse_md(md, base_url, acct, repo, ref, ghp):
     if 've-button.png' in img.attrs['src']:
       img.parent.decompose()
   
-  if PREFIX == 'juncture-digital/juncture':
+  if PREFIX == 'juncture-digital/server':
     convert_urls(soup, base_url, acct, repo, ref, ghp)
 
   for el in soup.findAll(re.compile("^ve-.+")):
@@ -472,7 +472,7 @@ def j1_md_to_html(src, **args):
   else:
     template = get_gh_file('juncture-digital/server/static/v1.html', **args)
   template = template.replace('window.PREFIX = null', f"window.PREFIX = '{acct}/{repo}';")
-  template = template.replace('window.IS_JUNCTURE = null', f"window.IS_JUNCTURE = {'true' if PREFIX == 'juncture-digital/juncture' else 'false'};")
+  template = template.replace('window.IS_JUNCTURE = null', f"window.IS_JUNCTURE = {'true' if PREFIX == 'juncture-digital/server' else 'false'};")
   if ref: template = template.replace('window.REF = null', f"window.REF = '{ref}';")
   template = BeautifulSoup(template, 'html5lib')
   
@@ -723,7 +723,7 @@ async def serve(
   path_elems = [elem for elem in request.url.path.split('/') if elem]
   env = 'local' if request.url.hostname == 'localhost' else 'dev' if request.url.hostname == 'dev.juncture-digital.org' else 'prod'
 
-  if PREFIX == 'juncture-digital/juncture':
+  if PREFIX == 'juncture-digital/server':
     path_root = path_elems[0] if path_elems else 'index'
     logger.info(f'path_root: {path_root} env: {env}') 
     if path_root in ('index', 'editor', 'media'):
@@ -806,7 +806,7 @@ if __name__ == '__main__':
   parser.add_argument('--repo', help='Github repo')
   parser.add_argument('--ref', help='Github ref')
   parser.add_argument('--path', help='Github path')
-  parser.add_argument('--prefix', default='juncture-digital/juncture', help='Github path')
+  parser.add_argument('--prefix', default='juncture-digital/server', help='Github path')
   
   parser.add_argument('--serve', type=bool, default=False, help='Serve converted content')
   parser.add_argument('--reload', type=bool, default=False, help='Reload on change')
