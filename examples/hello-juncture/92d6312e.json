@@ -1,0 +1,23 @@
+[
+  {
+    "type": "Annotation",
+    "body": [
+      {
+        "type": "TextualBody",
+        "value": "The Peek Bug (Aulacophora indica)",
+        "purpose": "commenting"
+      }
+    ],
+    "target": {
+      "source": "http://zoomviewer.toolforge.org/iipsrv.fcgi/?iiif=cache/b18fccb7e65ad6871d672b949b5bdf2a.tif",
+      "selector": {
+        "type": "FragmentSelector",
+        "conformsTo": "http://www.w3.org/TR/media-frags/",
+        "value": "xywh=pixel:1168.9268798828125,612.0160522460938,1162.6678466796875,1067.3707885742188"
+      },
+      "id": "92d6312e"
+    },
+    "@context": "http://www.w3.org/ns/anno.jsonld",
+    "id": "386db45b"
+  }
+]

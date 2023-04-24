@@ -1,0 +1,23 @@
+[
+    {
+      "type": "Annotation",
+      "body": [
+        {
+          "type": "TextualBody",
+          "value": "In \"The Meeting of Antony and Cleopatra\" (1883), Lawrence Alma-Tadema (1836-1912) conveys the intoxicating fragrance of Cleopatra with roses, petals, and incense wafting from gilded censers.",
+          "purpose": "commenting"
+        }
+      ],
+      "target": {
+        "source": "http://zoomviewer.toolforge.org/iipsrv.fcgi/?iiif=cache/bdb890febe67e733cdc91f28d3d7a437.tif",
+        "selector": {
+          "type": "FragmentSelector",
+          "conformsTo": "http://www.w3.org/TR/media-frags/",
+          "value": "xywh=pixel:9.10396671295166,1731.4749755859375,1147.4993047714233,1036.2879638671875"
+        },
+        "id": "277be809"
+      },
+      "@context": "http://www.w3.org/ns/anno.jsonld",
+      "id": "cc591b94"
+    }
+  ]

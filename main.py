@@ -48,6 +48,7 @@ logging.getLogger('requests').setLevel(logging.INFO)
 
 PREFIX = os.environ.get('JUNCTURE_PREFIX', 'juncture-digital/server')
 LOCAL_CONTENT_ROOT = os.environ.get('LOCAL_CONTENT_ROOT')
+LOCAL_WC = os.environ.get('LOCAL_WC', 'false').lower() == 'true'
 CREDS = json.loads(os.environ.get('JUNCTURE_CREDS', '{}'))
 
 ### Customblocks Config ###
@@ -531,8 +532,9 @@ def j2_md_to_html(src, **args):
   
   if env == 'local':
     template = open(f'{BASEDIR}/static/v2.html', 'r').read()
-    template = re.sub(r'https:\/\/cdn\.jsdelivr\.net\/npm\/juncture-digital\/docs\/js\/index\.js', 'http://localhost:5173/src/main.ts', template)
-    template = re.sub(r'.*https:\/\/cdn\.jsdelivr\.net\/npm\/juncture-digital\/docs\/css\/index\.css.*', '', template)
+    if LOCAL_WC:
+      template = re.sub(r'https:\/\/cdn\.jsdelivr\.net\/npm\/juncture-digital\/docs\/js\/index\.js', 'http://localhost:5173/src/main.ts', template)
+      template = re.sub(r'.*https:\/\/cdn\.jsdelivr\.net\/npm\/juncture-digital\/docs\/css\/index\.css.*', '', template)
   else:
     template = get_gh_file('juncture-digital/server/static/v2.html', **args)
   template = template.replace('const PREFIX = null', f"const PREFIX = '{prefix}';")
@@ -623,12 +625,14 @@ def read(src):
     src = src[:-1] if src.endswith('/') else src
     for ext in ('', '.md', '/README.md'):
       path = f'{src}{ext}'
+      # logger.info(f'read: {path} {os.path.isfile(path)}')
       if os.path.isfile(path):
         with open(path, 'r') as f:
           return f.read()
 
 def convert(src, fmt, env, **args):
   """Convert source file to specified format"""
+  # logger.info(f'convert: {src} ({fmt})')
   if src.startswith('https://raw.githubusercontent.com'):
     path_elems = src.split('/')[3:]
     acct, repo, ref, *path_elems = path_elems
@@ -736,8 +740,9 @@ async def serve(
           refresh=refresh)
 
       if env == 'local':
-        content = re.sub(r'https:\/\/cdn\.jsdelivr\.net\/npm\/juncture-digital\/docs\/js\/index\.js', 'http://localhost:5173/src/main.ts', content)
-        content = re.sub(r'.*https:\/\/cdn\.jsdelivr\.net\/npm\/juncture-digital\/docs\/css\/index\.css.*', '', content)
+        if LOCAL_WC:
+          content = re.sub(r'https:\/\/cdn\.jsdelivr\.net\/npm\/juncture-digital\/docs\/js\/index\.js', 'http://localhost:5173/src/main.ts', content)
+          content = re.sub(r'.*https:\/\/cdn\.jsdelivr\.net\/npm\/juncture-digital\/docs\/css\/index\.css.*', '', content)
       elif env == 'dev':
         content = content.replace('https://cdn.jsdelivr.net/npm/juncture-digital/docs', 'https://juncture-digital.github.io/web-components')
       else: # prod
@@ -746,22 +751,27 @@ async def serve(
     
     else:
       if path_root in ['docs', 'examples', 'showcase'] or len(path_elems) < 2:
-        path_elems = ['juncture-digital', 'juncture'] + path_elems
+        path_elems = ['juncture-digital', 'server'] + path_elems
 
       try:
         acct, repo, *path_elems = path_elems
         file_path = '/'.join(path_elems) 
-        logger.debug(f'acct: {acct}, repo: {repo}, path: {path_elems}')
+        logger.info(f'acct: {acct}, repo: {repo}, path: {file_path}')
         if env == 'local':
-          src = f'{BASEDIR}/{path}'
+          if LOCAL_CONTENT_ROOT:
+            src = f'{LOCAL_CONTENT_ROOT}/{path}'
+          elif path_root in ['docs', 'examples', 'showcase']:
+            src = f'{BASEDIR}/{path}'
+          else:
+            src = f'https://raw.githubusercontent.com/{acct}/{repo}/{ref}/{file_path}'
         else:
-          src = f'https://raw.githubusercontent.com/{acct}/{repo}/{env}/{file_path}'
+          src = f'https://raw.githubusercontent.com/{acct}/{repo}/{ref}/{file_path}'
         if path_root == 'docs':
           content = read(src)
         else:
           content = convert(src=src, fmt=fmt, env=env, refresh=refresh)
       except:
-        logger.exception(traceback.format_exc())
+        logger.error(traceback.format_exc())
         content = None
       if content:
         media_type = 'text/html' if fmt.startswith('html') else 'text/markdown' if fmt.startswith('md') else 'text/plain' # ?? what mime type for wp?
@@ -799,15 +809,16 @@ async def sendmail(request: Request):
 if __name__ == '__main__':
   logger.setLevel(logging.INFO)
   parser = argparse.ArgumentParser(description='Juncture content converters')
-  parser.add_argument('--src', help=f'Path to source file')
-  parser.add_argument('--fmt', default='html', help='Output format')
-  parser.add_argument('--ghp', type=bool, default=False, help='Hosted on Github Pages')
-  parser.add_argument('--acct', help='Github account')
-  parser.add_argument('--repo', help='Github repo')
-  parser.add_argument('--ref', help='Github ref')
-  parser.add_argument('--path', help='Github path')
-  parser.add_argument('--prefix', default='juncture-digital/server', help='Github path')
+  # parser.add_argument('--src', help=f'Path to source file')
+  # parser.add_argument('--fmt', default='html', help='Output format')
+  # parser.add_argument('--ghp', type=bool, default=False, help='Hosted on Github Pages')
+  # parser.add_argument('--acct', help='Github account')
+  # parser.add_argument('--repo', help='Github repo')
+  # parser.add_argument('--ref', help='Github ref')
+  # parser.add_argument('--path', help='Github path')
   
+  parser.add_argument('--localwc', type=bool, default=False, help='Use local web components')
+  parser.add_argument('--prefix', default='juncture-digital/server', help='Github path')
   parser.add_argument('--serve', type=bool, default=False, help='Serve converted content')
   parser.add_argument('--reload', type=bool, default=False, help='Reload on change')
   parser.add_argument('--port', type=int, default=8080, help='HTTP port')
@@ -815,12 +826,13 @@ if __name__ == '__main__':
 
   args = vars(parser.parse_args())
   os.environ['JUNCTURE_PREFIX'] = args['prefix']
+  os.environ['LOCAL_WC'] = str(args['localwc'])
   if  args['content']:
     root = os.path.abspath(args['content'])
     os.environ['LOCAL_CONTENT_ROOT'] = root
   
   if args['serve']:
-    print(f'\nPREFIX: {os.environ["JUNCTURE_PREFIX"]}\nLOCAL_CONTENT_ROOT: {os.environ.get("LOCAL_CONTENT_ROOT")}\n')
+    print(f'\nPREFIX: {os.environ["JUNCTURE_PREFIX"]}\nLOCAL_CONTENT_ROOT: {os.environ.get("LOCAL_CONTENT_ROOT")}\nLOCAL_WC: {os.environ.get("LOCAL_WC")}\n')
     uvicorn.run('main:app', port=args['port'], log_level='info', reload=args['reload'])
 
 elif 'VERCEL' not in os.environ:
