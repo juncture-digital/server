@@ -50,6 +50,7 @@ PREFIX = os.environ.get('JUNCTURE_PREFIX', 'juncture-digital/server')
 LOCAL_CONTENT_ROOT = os.environ.get('LOCAL_CONTENT_ROOT')
 LOCAL_WC = os.environ.get('LOCAL_WC', 'false').lower() == 'true'
 CREDS = json.loads(os.environ.get('JUNCTURE_CREDS', '{}'))
+ENV = os.environ.get('ENV')
 
 ### Customblocks Config ###
 
@@ -725,7 +726,10 @@ async def serve(
     refresh: Optional[bool] = False
   ):
   path_elems = [elem for elem in request.url.path.split('/') if elem]
-  env = 'local' if request.url.hostname == 'localhost' else 'dev' if request.url.hostname == 'dev.juncture-digital.org' else 'prod'
+  if ENV:
+    env = ENV
+  else:
+    env = 'local' if request.url.hostname == 'localhost' else 'dev' if request.url.hostname == 'dev.juncture-digital.org' else 'prod'
 
   if PREFIX == 'juncture-digital/server':
     path_root = path_elems[0] if path_elems else 'index'
@@ -765,7 +769,8 @@ async def serve(
           else:
             src = f'https://raw.githubusercontent.com/{acct}/{repo}/{ref}/{file_path}'
         else:
-          src = f'https://raw.githubusercontent.com/{acct}/{repo}/{ref}/{file_path}'
+          src = f'https://raw.githubusercontent.com/{acct}/{repo}/{"main" if env == "prod" else "dev"}/{file_path}'
+        logger.info(src)
         if path_root == 'docs':
           content = read(src)
         else:
@@ -817,6 +822,7 @@ if __name__ == '__main__':
   # parser.add_argument('--ref', help='Github ref')
   # parser.add_argument('--path', help='Github path')
   
+  parser.add_argument('--env', type=str, help='Environment')
   parser.add_argument('--localwc', type=bool, default=False, help='Use local web components')
   parser.add_argument('--prefix', default='juncture-digital/server', help='Github path')
   parser.add_argument('--serve', type=bool, default=False, help='Serve converted content')
@@ -827,12 +833,13 @@ if __name__ == '__main__':
   args = vars(parser.parse_args())
   os.environ['JUNCTURE_PREFIX'] = args['prefix']
   os.environ['LOCAL_WC'] = str(args['localwc'])
+  if args['env']: os.environ['ENV'] = args['env']
   if  args['content']:
     root = os.path.abspath(args['content'])
     os.environ['LOCAL_CONTENT_ROOT'] = root
   
   if args['serve']:
-    print(f'\nPREFIX: {os.environ["JUNCTURE_PREFIX"]}\nLOCAL_CONTENT_ROOT: {os.environ.get("LOCAL_CONTENT_ROOT")}\nLOCAL_WC: {os.environ.get("LOCAL_WC")}\n')
+    print(f'\nENV: {os.environ.get("ENV")}\nPREFIX: {os.environ["JUNCTURE_PREFIX"]}\nLOCAL_CONTENT_ROOT: {os.environ.get("LOCAL_CONTENT_ROOT")}\nLOCAL_WC: {os.environ.get("LOCAL_WC")}\n')
     uvicorn.run('main:app', port=args['port'], log_level='info', reload=args['reload'])
 
 elif 'VERCEL' not in os.environ:
