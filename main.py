@@ -191,11 +191,14 @@ def convert_urls(soup, base, acct, repo, ref, ghp=False):
       if ghp:
         base = f'/{repo}/'
       else:
+        '''
         base_elems = [elem for elem in base.split('/') if elem]
         if len(base_elems) >= 2 and base_elems[0] == acct and base_elems[1] == repo:
           base = f'/{acct}/{repo}/'
         else:
           base = '/'
+        '''
+        base = f'/{acct}/{repo}/'
       converted = base + elem.attrs['href'][1:] + (f'?ref={ref}' if ref != 'main' else '')
       elem.attrs['href'] = converted
     else:
@@ -538,7 +541,7 @@ def j2_md_to_html(src, **args):
       template = re.sub(r'.*https:\/\/cdn\.jsdelivr\.net\/npm\/juncture-digital\/docs\/css\/index\.css.*', '', template)
   else:
     template = get_gh_file('juncture-digital/server/static/v2.html', **args)
-  template = template.replace('window.PREFIX = null', f"window.PREFIX = '{acct}/{repo}';")
+  template = template.replace('const PREFIX = null', f"const PREFIX = '{acct}/{repo}';")
   if ref: template = template.replace('const REF = null', f"const REF = '{ref}';")
   template = BeautifulSoup(template, 'html5lib')
   template.body.insert(0, soup.html.body.main)
