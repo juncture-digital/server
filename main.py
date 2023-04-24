@@ -429,8 +429,6 @@ def parse_md(md, base_url, acct, repo, ref, ghp):
     if el.name in ('ve-image', 've-video'):
       el.name = 've-media'
 
-  footer = soup.find('ve-footer')
-  
   _config_tabs(soup)
   _config_cards(soup)
   _set_mark_attrs(soup)
@@ -449,7 +447,17 @@ def parse_md(md, base_url, acct, repo, ref, ghp):
     footnotes.name = 'section'
     contents.append(footnotes)
 
-  if footer: main.append(footer)
+  footer = soup.find('ve-footer')
+  if not footer:
+    # default footer
+    footer = soup.new_tag('ve-footer')
+    footer.append(BeautifulSoup('''
+      <ul>
+        <li><a href="https://juncture-digital.org">Powered by: <img alt="" src="https://juncture-digital.github.io/juncture/static/images/juncture-logo.png"/></a></li>
+        <li>view-code</li>
+      </ul>''', 
+    'html5lib'))
+  main.append(footer)
 
   set_entities(soup)
   
@@ -524,7 +532,7 @@ def j2_md_to_html(src, **args):
   env = args.pop('env', 'prod')
   prefix = ''
   
-  logger.info(f'j2_md_to_html: base_url={base_url}, ghp={ghp}, acct={acct}, repo={repo}, ref={ref}, path={path}, PREFIX={PREFIX}')
+  logger.info(f'j2_md_to_html: base_url={base_url}, ghp={ghp}, acct={acct}, repo={repo}, ref={ref}, path={path}, env={env} PREFIX={PREFIX}')
 
   soup = parse_md(src, base_url, acct, repo, ref, ghp)
 
@@ -541,7 +549,7 @@ def j2_md_to_html(src, **args):
     template = open(f'{BASEDIR}/static/v2.html', 'r').read()
     if LOCAL_WC:
       template = re.sub(r'https:\/\/cdn\.jsdelivr\.net\/npm\/juncture-digital\/docs\/js\/index\.js', 'http://localhost:5173/src/main.ts', template)
-      template = re.sub(r'.*https:\/\/cdn\.jsdelivr\.net\/npm\/juncture-digital\/docs\/css\/index\.css.*', '', template)
+      # template = re.sub(r'.*https:\/\/cdn\.jsdelivr\.net\/npm\/juncture-digital\/docs\/css\/index\.css.*', '', template)
   else:
     template = get_gh_file('juncture-digital/server/static/v2.html', **args)
   template = template.replace('const PREFIX = null', f"const PREFIX = '{acct}/{repo}';")
@@ -645,6 +653,10 @@ def convert(src, fmt, env, **args):
     acct, repo, ref, *path_elems = path_elems
     path = '/' + '/'.join(path_elems)
     args = {**args, 'acct': acct, 'repo': repo, 'ref': ref, 'path': path, 'env': env}
+  else:
+    args = {**args, 'env': env}
+  
+  logger.info(f'convert: {src} {fmt} {env} {args}')
 
   content = read(src)
   if not content: return None
