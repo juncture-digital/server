@@ -538,7 +538,7 @@ def j2_md_to_html(src, **args):
       template = re.sub(r'.*https:\/\/cdn\.jsdelivr\.net\/npm\/juncture-digital\/docs\/css\/index\.css.*', '', template)
   else:
     template = get_gh_file('juncture-digital/server/static/v2.html', **args)
-  template = template.replace('const PREFIX = null', f"const PREFIX = '{prefix}';")
+  template = template.replace('window.PREFIX = null', f"window.PREFIX = '{acct}/{repo}';")
   if ref: template = template.replace('const REF = null', f"const REF = '{ref}';")
   template = BeautifulSoup(template, 'html5lib')
   template.body.insert(0, soup.html.body.main)
@@ -733,7 +733,7 @@ async def serve(
 
   if PREFIX == 'juncture-digital/server':
     path_root = path_elems[0] if path_elems else 'index'
-    logger.info(f'path_root: {path_root} env: {env}') 
+    logger.info(f'path_root: {path_root} env: {env} ref: {ref}') 
     if path_root in ('index', 'editor', 'media'):
       if env == 'local':
         content = open(f'{BASEDIR}/static/{path_root}.html', 'r').read()
@@ -760,7 +760,7 @@ async def serve(
       try:
         acct, repo, *path_elems = path_elems
         file_path = '/'.join(path_elems) 
-        logger.info(f'acct: {acct}, repo: {repo}, path: {file_path}')
+        logger.info(f'acct: {acct} repo: {repo} ref: {ref} path: {file_path}')
         if env == 'local':
           if LOCAL_CONTENT_ROOT:
             src = f'{LOCAL_CONTENT_ROOT}/{path}'
@@ -769,7 +769,10 @@ async def serve(
           else:
             src = f'https://raw.githubusercontent.com/{acct}/{repo}/{ref}/{file_path}'
         else:
-          src = f'https://raw.githubusercontent.com/{acct}/{repo}/{"main" if env == "prod" else "dev"}/{file_path}'
+          if acct == 'juncture-digital' and repo == 'server':
+            src = f'https://raw.githubusercontent.com/{acct}/{repo}/{"main" if env == "prod" else "dev"}/{file_path}'
+          else:
+            src = f'https://raw.githubusercontent.com/{acct}/{repo}/{ref}/{file_path}'
         logger.info(src)
         if path_root == 'docs':
           content = read(src)
