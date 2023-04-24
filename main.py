@@ -198,7 +198,10 @@ def convert_urls(soup, base, acct, repo, ref, ghp=False):
         else:
           base = '/'
         '''
-        base = f'/{acct}/{repo}/'
+        if acct and repo:
+          base = f'/{acct}/{repo}/'
+        else:
+          base = '/'
       converted = base + elem.attrs['href'][1:] + (f'?ref={ref}' if ref != 'main' else '')
       elem.attrs['href'] = converted
     else:
